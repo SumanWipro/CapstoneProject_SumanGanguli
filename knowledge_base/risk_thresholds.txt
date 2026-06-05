@@ -1,0 +1,55 @@
+RISK THRESHOLDS DOCUMENT
+Agentic AI Loan Approval System — Version 1.0
+==============================================
+
+1. DEBT-TO-INCOME (DTI) THRESHOLDS
+
+DTI is calculated as: monthly_existing_liabilities / (annual_income / 12)
+
+1.1 DTI Risk Bands
+- Low Risk:    DTI <= 0.30 (30%)   — Strong repayment capacity
+- Medium Risk: DTI 0.31 – 0.45    — Adequate repayment capacity
+- High Risk:   DTI 0.46 – 0.60    — Stretched repayment capacity; review required
+- Critical:    DTI > 0.60 (60%)   — Automatic rejection; insufficient capacity
+
+1.2 DTI Adjustments by Employment Type
+- Government/PSU employees: DTI threshold raised by 0.05 (job security premium)
+- Contract workers: DTI threshold lowered by 0.05 (income variability)
+- Unemployed: DTI calculated on declared alternate income only; max DTI 0.20
+
+2. COMPOSITE RISK SCORE
+
+The composite risk score (0–100) integrates credit, DTI, and employment factors.
+
+2.1 Score Interpretation
+- 0–39:   Low Risk    → APPROVED (subject to policy compliance)
+- 40–69:  Medium Risk → REVIEW_REQUIRED (human underwriter decision)
+- 70–100: High Risk   → REJECTED
+
+2.2 Score Component Weights
+- Credit Score Component:    40% of total risk score
+- DTI Component:             35% of total risk score
+- Employment Stability:      15% of total risk score
+- Loan-to-Income Ratio:      10% of total risk score
+
+3. HARD REJECTION TRIGGERS
+
+The following conditions result in immediate REJECTED classification
+regardless of other scores:
+- Credit score < 500
+- DTI > 0.60
+- Age < 18 or > 70
+- Active bankruptcy or insolvency proceedings (if declared)
+- Loan amount < INR 10,000 or > INR 10,000,000
+
+4. MANDATORY REVIEW TRIGGERS
+
+The following conditions escalate to REVIEW_REQUIRED even if risk score
+would otherwise suggest APPROVED:
+- Credit score 500–549 (Poor band)
+- DTI 0.50–0.60 (borderline high)
+- Thin credit file (< 3 credit accounts)
+- Recent credit default in past 24 months
+- Self-employed with < 2 years in business
+- Loan amount > INR 2,500,000 (high-value manual check)
+- Loan-to-income ratio > 3x annual income (unsecured)

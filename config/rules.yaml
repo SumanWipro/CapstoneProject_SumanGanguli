@@ -1,0 +1,190 @@
+# =============================================================================
+# Agentic AI Loan Approval System — Core Business Rules
+# config/rules.yaml
+#
+# Purpose:
+#   Top-level threshold configuration used by all agents and orchestrator
+#   nodes as the authoritative numeric source of truth. No thresholds are
+#   hardcoded in Python — all values are loaded from this file via
+#   config/settings.py → Settings.rules.
+#
+# Companion file:
+#   config/loan_rules.yaml — extended rules for scoring weights, per-product
+#   limits, and agent prompting configuration.
+#
+# Loaded by: config/settings.py → _load_rules()
+# Consumed by: every agent, every orchestrator node, MCP tools, unit tests.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# 1. APPLICANT ELIGIBILITY RULES
+# -----------------------------------------------------------------------------
+applicant:
+
+  # Age eligibility window (inclusive bounds)
+  min_age: 18       # Below this → REJECTED (AGE_INELIGIBLE)
+  max_age: 70       # Above this → REJECTED (AGE_INELIGIBLE)
+
+  # Employment type → stability band mapping
+  # Used by ApplicantProfileAgent to set employment_band in ProfileResult
+  employment_types:
+    stable:   ["salaried", "government"]
+    moderate: ["self_employed", "contract"]
+    unstable: ["unemployed", "student"]
+
+  # Minimum annual income (INR) per employment type
+  # Tighter than the global income.min_annual_income below
+  employment_income_floors:
+    salaried:      250000    # Private sector — INR 2.5 lakh
+    government:    200000    # PSU / government — lower due to job security
+    self_employed: 400000    # Net profit required — INR 4 lakh
+    contract:      350000    # Average last 2 years — INR 3.5 lakh
+    unemployed:    150000    # Absolute minimum only
+    student:       150000    # Absolute minimum only
+
+
+# -----------------------------------------------------------------------------
+# 2. CREDIT SCORE RULES
+# -----------------------------------------------------------------------------
+credit_score:
+
+  # Score band definitions used by FinancialRiskAgent
+  bands:
+    excellent:
+      min: 750
+      max: 900
+      risk_adjustment: -15   # Lowers composite risk score
+    good:
+      min: 650
+      max: 749
+      risk_adjustment: -5
+    fair:
+      min: 550
+      max: 649
+      risk_adjustment: +10
+    poor:
+      min: 300
+      max: 549
+      risk_adjustment: +25
+
+  # Hard decision rules
+  auto_reject_below:      500    # Immediate REJECTED — no agents run after profile
+  mandatory_review_below: 600    # Force REVIEW_REQUIRED even if risk_score < 40
+
+
+# -----------------------------------------------------------------------------
+# 3. INCOME RULES
+# -----------------------------------------------------------------------------
+income:
+
+  min_annual_income:     150000   # INR — absolute floor; below this → REJECTED
+  min_income_multiplier: 3        # Max unsecured loan = income × multiplier
+
+
+# -----------------------------------------------------------------------------
+# 4. DEBT-TO-INCOME (DTI) RULES
+# -----------------------------------------------------------------------------
+debt_to_income:
+
+  # DTI band upper bounds (DTI = monthly_liabilities / monthly_income)
+  low_risk:
+    max: 0.30
+    risk_score_base: 10    # Points added to composite risk score for this band
+  medium_risk:
+    max: 0.45
+    risk_score_base: 30
+  high_risk:
+    max: 0.60
+    risk_score_base: 60
+
+  # Hard thresholds
+  auto_reject_above: 0.60    # DTI > 60% → immediate REJECTED
+  critical_base:     90      # Risk score base for DTI > 60% (before clamping)
+
+  # Employment-type adjustments (added to auto_reject_above threshold)
+  employment_adjustments:
+    government: +0.05    # Raised — higher job security
+    contract:   -0.05    # Lowered — higher income variability
+
+
+# -----------------------------------------------------------------------------
+# 5. COMPOSITE RISK SCORE RULES
+# -----------------------------------------------------------------------------
+risk_score:
+
+  # Component weights — must sum to 1.0
+  weights:
+    credit_score:         0.40
+    dti:                  0.35
+    employment_stability: 0.15
+    loan_to_income_ratio: 0.10
+
+  # Decision thresholds
+  approved_below:        40     # risk_score < 40 → APPROVED (no hard rule failures)
+  review_required_below: 70     # 40 ≤ risk_score < 70 → REVIEW_REQUIRED
+  rejected_above:        70     # risk_score ≥ 70 → REJECTED
+
+  # Output clamp
+  min_score: 0
+  max_score: 100
+
+  # Employment stability adjustments (additive)
+  employment_stability_adjustments:
+    stable:   -5
+    moderate: +5
+    unstable: +20
+
+
+# -----------------------------------------------------------------------------
+# 6. LOAN AMOUNT AND TENURE RULES
+# -----------------------------------------------------------------------------
+loan:
+
+  min_amount:   10000       # INR — below this → REJECTED
+  max_amount:   10000000    # INR 1 crore — absolute ceiling
+
+  min_tenure:   6           # months
+  max_tenure:   360         # months (30-year home loan maximum)
+
+  # High-value threshold — loans above this require mandatory REVIEW_REQUIRED
+  high_value_threshold: 2500000   # INR 25 lakhs
+
+  # Loan-to-income multiplier limits
+  loan_to_income_limits:
+    unsecured_personal: 3   # Max 3× annual income
+    home_loan:          5   # Max 5× annual income
+    short_term:         2   # Max 2× for tenure < 12 months
+
+
+# -----------------------------------------------------------------------------
+# 7. DECISION CONFIDENCE THRESHOLDS
+# -----------------------------------------------------------------------------
+decision:
+
+  confidence_threshold_approve: 0.70    # Minimum confidence to emit APPROVED
+  confidence_threshold_review:  0.50    # Minimum confidence to emit REVIEW_REQUIRED
+
+  # Per-band confidence bands
+  approved_confidence:
+    clear:      0.85    # risk_score well below approved_below
+    borderline: 0.72
+
+  review_confidence:
+    upper: 0.70         # Closer to approved boundary
+    lower: 0.52         # Closer to rejected boundary
+
+  rejected_confidence:
+    clear:      0.88    # Hard rule triggered
+    borderline: 0.72    # risk_score just above rejected_above
+
+
+# -----------------------------------------------------------------------------
+# 8. COMPLIANCE / AUDIT RULES
+# -----------------------------------------------------------------------------
+compliance:
+
+  case_id_prefix:         "CASE"
+  case_id_date_format:    "%Y%m%d"
+  case_id_sequence_width: 4        # CASE-20240115-0042
+  retention_years:        7        # Mandatory audit record retention

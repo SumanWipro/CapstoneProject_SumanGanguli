@@ -1,0 +1,65 @@
+REGULATORY COMPLIANCE DOCUMENT
+Agentic AI Loan Approval System — Version 1.0
+==============================================
+
+1. FAIR LENDING REQUIREMENTS
+
+1.1 Non-Discrimination Policy
+Loan decisions must be based exclusively on financial and creditworthiness
+criteria. Decisions must not be influenced by:
+- Race, religion, caste, or ethnicity
+- Gender or marital status
+- Geographic location (except for legally permitted area-based risk pricing)
+- Age (within the eligible range of 18–70 years)
+- Disability status
+
+1.2 Equal Credit Opportunity
+All applications must receive a decision within 30 days of submission.
+Rejected applicants must be provided with the specific reasons for rejection
+upon request.
+
+2. KNOW YOUR CUSTOMER (KYC) REQUIREMENTS
+
+2.1 Mandatory KYC Documents
+Before disbursement (manual process, outside this system):
+- Government-issued photo ID (Aadhaar, PAN, Passport, or Voter ID)
+- Proof of address (utility bill, bank statement, or rental agreement)
+- PAN Card (mandatory for all loans above INR 50,000)
+
+2.2 KYC Verification
+This AI system flags applications for manual KYC verification when:
+- Declared address does not match application location
+- Applicant age < 25 (enhanced due diligence)
+- Loan amount exceeds INR 1,000,000
+
+3. AUDIT AND RECORD RETENTION
+
+3.1 Audit Trail Requirements
+A complete audit record must be maintained for every loan application
+processed by this system, including:
+- All input fields provided by the applicant
+- Intermediate agent assessments (profile, risk, policy)
+- Final decision with confidence score and explanation
+- Unique Case ID
+- Processing timestamp (UTC)
+
+3.2 Retention Period
+Audit records must be retained for a minimum of 7 years from the date of
+the decision. Records for approved loans must be retained for 7 years
+after loan closure.
+
+4. MODEL GOVERNANCE
+
+4.1 AI Decision Explainability
+The system must provide a human-readable explanation for every decision.
+The explanation must reference specific financial factors (DTI, credit score,
+income) rather than opaque algorithmic outputs.
+
+4.2 Human Override
+Any decision classified as REVIEW_REQUIRED must be reviewed and approved
+or rejected by a licensed human underwriter before disbursement.
+The AI system's recommendation is advisory only in REVIEW_REQUIRED cases.
+
+4.3 Model Monitoring
+Decision distributions (approval rate, average confidence score, rejection
+reasons) must be reviewed monthly to detect model drift or bias.

@@ -1,0 +1,47 @@
+INCOME GUIDELINES DOCUMENT
+Agentic AI Loan Approval System — Version 1.0
+==============================================
+
+1. MINIMUM INCOME REQUIREMENTS
+
+1.1 Absolute Minimum
+The minimum annual income to qualify for any loan product is INR 150,000.
+Applications from individuals earning below this threshold are rejected.
+
+1.2 Income by Employment Type
+- Salaried (private sector): Minimum INR 250,000 per annum
+- Salaried (government/PSU): Minimum INR 200,000 per annum
+- Self-employed professional: Minimum INR 400,000 per annum (net profit)
+- Self-employed business owner: Minimum INR 500,000 per annum (net profit)
+- Contract/freelance worker: Minimum INR 350,000 per annum (average last 2 years)
+
+2. INCOME VERIFICATION
+
+2.1 Required Documentation (for manual review cases)
+- Salaried: Last 3 months salary slips and Form 16 / ITR last 2 years
+- Self-employed: ITR for last 3 years, CA-certified P&L statement
+- Contract: Bank statements for last 12 months plus client contracts
+
+2.2 Income Stability Assessment
+Income is considered stable when:
+- Salaried: Employed with current employer for >= 6 months
+- Self-employed: Business operational for >= 2 years
+- Contract: Same primary client for >= 12 months OR multiple clients
+
+3. LOAN-TO-INCOME RATIO
+
+3.1 The maximum loan amount is capped at:
+- 3x annual income for unsecured personal loans
+- 5x annual income for home loans and mortgage-backed loans
+- 2x annual income for short-term loans (tenure < 12 months)
+
+3.2 Applications exceeding these ratios are automatically classified as
+REVIEW_REQUIRED regardless of credit score.
+
+4. INCOME CONSISTENCY CHECKS
+
+4.1 Red flags that trigger REVIEW_REQUIRED:
+- Declared income significantly lower than average for the occupation/location
+- Sudden income increase of more than 50% in a single year
+- Multiple income sources without documentation
+- Income declared in cash-based businesses above INR 1,000,000

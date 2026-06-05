@@ -1,0 +1,176 @@
+# =============================================================================
+# Agentic AI Loan Approval System — Logging Configuration
+# config/logging_config.yaml
+#
+# Purpose:
+#   Centralised logging configuration for every module in the system.
+#   Defines per-module log levels, output format, and structured field
+#   conventions used by utils/logger.py.
+#
+# Loaded by: config/settings.py → Settings.logging_config
+# Applied by: utils/logger.py → _configure_logging()
+#
+# Log levels (ascending severity):
+#   DEBUG    — detailed diagnostic output for development
+#   INFO     — normal operational events (requests, decisions, audit writes)
+#   WARNING  — recoverable issues (missing optional config, retries)
+#   ERROR    — failures that affect a single request but not the service
+#   CRITICAL — failures that affect the entire service
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# 1. ROOT LOGGER CONFIGURATION
+# Default applied to any module not listed under module_levels below.
+# -----------------------------------------------------------------------------
+root:
+  level: INFO            # Default level for all modules
+  format: json           # json | console  (overridden by LOG_FORMAT env var)
+
+
+# -----------------------------------------------------------------------------
+# 2. PER-MODULE LOG LEVELS
+# Fine-grained control — override root level for specific modules.
+# Keys must match the __name__ of the Python module.
+# -----------------------------------------------------------------------------
+module_levels:
+
+  # API Gateway
+  api.main:                     INFO
+  api.routes.analyze:           INFO
+  api.middleware.logging_middleware: INFO
+  api.middleware.error_middleware:   WARNING
+
+  # Orchestrator
+  orchestrator.graph:           INFO
+  orchestrator.nodes:           INFO
+  orchestrator.state:           DEBUG    # Verbose for state inspection in dev
+
+  # Agents — INFO in production; DEBUG reveals full prompts and responses
+  agents.base_agent:            INFO
+  agents.applicant_profile_agent: INFO
+  agents.financial_risk_agent:  INFO
+  agents.policy_knowledge_agent: INFO
+  agents.loan_decision_agent:   INFO
+  agents.compliance_agent:      INFO
+
+  # MCP layer
+  mcp.server:                   INFO
+  mcp.tools.profile_tools:      DEBUG
+  mcp.tools.risk_tools:         DEBUG
+  mcp.tools.policy_tools:       DEBUG
+  mcp.tools.decision_tools:     DEBUG
+  mcp.tools.compliance_tools:   DEBUG
+
+  # RAG pipeline
+  rag.ingest:                   INFO
+  rag.retriever:                INFO
+  rag.embeddings:               WARNING  # Model loading is noisy; suppress
+
+  # Configuration
+  config.settings:              WARNING  # Only warn on missing config
+
+  # Utilities
+  utils.logger:                 WARNING  # Suppress logger-about-logger noise
+  utils.audit:                  INFO
+
+  # Third-party libraries — suppress noisy output
+  boto3:                        WARNING
+  botocore:                     WARNING
+  httpx:                        WARNING
+  chromadb:                     WARNING
+  sentence_transformers:        WARNING
+  uvicorn:                      INFO
+  uvicorn.access:               INFO
+  fastapi:                      WARNING
+
+
+# -----------------------------------------------------------------------------
+# 3. STRUCTURED LOG FIELD CONVENTIONS
+# Every log record MUST include these fields where applicable.
+# utils/logger.py binds these at the call site.
+# -----------------------------------------------------------------------------
+required_fields:
+
+  # Always present
+  - timestamp          # ISO 8601 UTC — added by TimeStamper processor
+  - level              # DEBUG | INFO | WARNING | ERROR | CRITICAL
+  - logger             # Module __name__ e.g. agents.financial_risk_agent
+  - event              # Short snake_case descriptor e.g. "risk_calculation_complete"
+
+  # Present on API request/response log records
+  - request_id         # 8-char UUID prefix for request correlation
+  - method             # HTTP method e.g. POST
+  - path               # URL path e.g. /api/v1/analyze
+  - status_code        # HTTP status code
+  - latency_ms         # Request processing time in milliseconds
+
+  # Present on agent log records
+  - component          # Agent/tool name e.g. "financial_risk_agent"
+  - applicant_id       # For correlation across all nodes in one pipeline run
+
+  # Present on audit log records
+  - case_id            # Audit Case ID e.g. CASE-20240115-0042
+
+
+# -----------------------------------------------------------------------------
+# 4. LOG OUTPUT FORMAT CONFIGURATION
+# Controls the structlog processor pipeline defined in utils/logger.py.
+# -----------------------------------------------------------------------------
+format:
+
+  json:
+    # Production format — machine-parseable, one JSON object per line
+    timestamp_format: iso     # ISO 8601: 2024-01-15T10:30:00.123456Z
+    sort_keys: true           # Consistent field order for log parsers
+    ensure_ascii: false       # Allow UTF-8 characters in messages
+
+  console:
+    # Development format — human-readable with colour coding
+    timestamp_format: "%H:%M:%S"   # HH:MM:SS only for brevity
+    colors: true                    # ANSI colour codes by log level
+    pad_event: 40                   # Align event column width
+
+
+# -----------------------------------------------------------------------------
+# 5. AUDIT LOG CONFIGURATION
+# Applied by utils/audit.py — separate from application logs.
+# -----------------------------------------------------------------------------
+audit:
+
+  # Directory where audit JSONL files are written
+  # Overridden by AUDIT_LOG_DIR env var in Settings
+  log_dir: "./audit/logs"
+
+  # One file per day: YYYY-MM-DD.jsonl
+  file_pattern: "%Y-%m-%d.jsonl"
+
+  # Fields included in every audit record (written by ComplianceAgent)
+  required_audit_fields:
+    - server_timestamp_utc   # Added by utils/audit.write_audit_record()
+    - case_id
+    - applicant_id
+    - verdict
+    - confidence_score
+    - explanation
+    - dti
+    - credit_band
+    - risk_score
+    - risk_flags
+    - employment_band
+    - age
+    - income
+    - loan_amount
+    - loan_tenure
+    - existing_liabilities
+    - location
+    - timestamp              # Original application submission timestamp
+
+
+# -----------------------------------------------------------------------------
+# 6. LOG ROTATION POLICY (informational — enforced at infrastructure level)
+# -----------------------------------------------------------------------------
+rotation:
+  max_file_size_mb: 100      # Rotate when a log file reaches 100 MB
+  max_backup_count: 30       # Keep 30 rotated files (~30 days)
+  compress_rotated: true     # gzip rotated files to save disk space

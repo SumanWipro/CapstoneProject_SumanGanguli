@@ -1,0 +1,49 @@
+CREDIT POLICY DOCUMENT
+Agentic AI Loan Approval System — Version 1.0
+==============================================
+
+1. CREDIT SCORE REQUIREMENTS
+
+1.1 Minimum Acceptable Credit Score
+All loan applicants must have a minimum CIBIL credit score of 500 to be
+considered for any loan product. Applications with a score below 500 are
+automatically rejected without further review.
+
+1.2 Credit Score Bands
+The institution classifies credit scores into four bands:
+- Excellent: 750–900. Applicants in this band qualify for the best interest
+  rates and the highest loan amounts.
+- Good: 650–749. Applicants qualify for standard loan products with
+  competitive rates. Minor risk adjustments may apply.
+- Fair: 550–649. Applicants may qualify for limited loan products. Stricter
+  DTI requirements apply. A co-applicant or collateral may be required.
+- Poor: 500–549. Applicants are restricted to small loan amounts (up to
+  INR 200,000) and short tenures (up to 24 months). Manual review required.
+
+1.3 Recent Credit Events
+Applications from individuals with any of the following within the past
+24 months require mandatory REVIEW_REQUIRED classification:
+- Loan defaults or settlements
+- Written-off credit card accounts
+- More than 3 delayed payments (>30 days)
+
+1.4 Thin Credit File
+Applicants with fewer than 3 credit accounts in their credit history are
+considered to have a thin credit file. Such applications are routed to
+REVIEW_REQUIRED regardless of score.
+
+2. CO-APPLICANT POLICY
+
+2.1 A co-applicant is mandatory when:
+- The primary applicant's credit score is below 600
+- The primary applicant is self-employed with less than 2 years in business
+- The loan-to-income ratio exceeds 5x annual income
+
+3. COLLATERAL POLICY
+
+3.1 Unsecured loans (no collateral) are permitted only for:
+- Salaried applicants with credit score >= 650
+- Government employees regardless of credit score (minimum 550)
+- Self-employed with >= 3 years in business and credit score >= 680
+
+3.2 All other applicants must provide collateral for loans above INR 500,000.

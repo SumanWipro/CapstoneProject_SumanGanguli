@@ -1,0 +1,215 @@
+# =============================================================================
+# Agentic AI Loan Approval System — Detailed Loan Business Rules
+# config/loan_rules.yaml
+#
+# Purpose:
+#   Extended business rules specific to loan product eligibility, risk scoring
+#   weights, per-employment-type income floors, and notification templates.
+#   Complements config/rules.yaml which holds the top-level thresholds.
+#
+# Loaded by: config/settings.py → Settings.loan_rules
+# Consumed by: agents, orchestrator nodes, and MCP tools.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# 1. EMPLOYMENT TYPE CONFIGURATION
+# -----------------------------------------------------------------------------
+employment:
+
+  # Stability band mapping — determines employment_band in ProfileResult
+  stability_bands:
+    stable:   ["salaried", "government"]
+    moderate: ["self_employed", "contract"]
+    unstable: ["unemployed", "student"]
+
+  # Minimum annual income (INR) required per employment type
+  # These are tighter than the global income.min_annual_income in rules.yaml
+  income_floors:
+    salaried:      250000    # INR 2.5 lakh/year
+    government:    200000    # INR 2.0 lakh/year (lower due to job security)
+    self_employed: 400000    # INR 4.0 lakh/year (net profit)
+    contract:      350000    # INR 3.5 lakh/year (average last 2 years)
+    unemployed:    150000    # INR 1.5 lakh/year (absolute minimum only)
+    student:       150000    # INR 1.5 lakh/year (absolute minimum only)
+
+  # Employment stability risk score adjustments (additive to composite score)
+  # A negative value reduces risk score; positive increases it
+  risk_score_adjustment:
+    stable:   -5    # Job security premium — reduces risk
+    moderate: +5    # Moderate variability — slight increase
+    unstable: +20   # High income risk — significant increase
+
+
+# -----------------------------------------------------------------------------
+# 2. CREDIT SCORE CONFIGURATION
+# -----------------------------------------------------------------------------
+credit:
+
+  # Score band boundaries — used by FinancialRiskAgent
+  bands:
+    excellent:
+      min: 750
+      max: 900
+      label: "Excellent"
+      risk_adjustment: -15    # Reduces composite risk score
+    good:
+      min: 650
+      max: 749
+      label: "Good"
+      risk_adjustment: -5
+    fair:
+      min: 550
+      max: 649
+      label: "Fair"
+      risk_adjustment: +10
+    poor:
+      min: 300
+      max: 549
+      label: "Poor"
+      risk_adjustment: +25
+
+  # Hard rules
+  auto_reject_below: 500        # Immediate REJECTED — no further processing
+  mandatory_review_below: 600   # REVIEW_REQUIRED even if risk_score < 40
+
+  # Thin credit file: fewer than this many accounts triggers REVIEW_REQUIRED
+  thin_file_account_threshold: 3
+
+
+# -----------------------------------------------------------------------------
+# 3. DEBT-TO-INCOME (DTI) CONFIGURATION
+# -----------------------------------------------------------------------------
+dti:
+
+  # DTI = existing_monthly_liabilities / (annual_income / 12)
+  thresholds:
+    low_risk:    0.30    # DTI <= 30% — strong repayment capacity
+    medium_risk: 0.45    # DTI <= 45% — adequate capacity
+    high_risk:   0.60    # DTI <= 60% — stretched capacity (REVIEW_REQUIRED)
+    auto_reject: 0.60    # DTI > 60%  — automatic REJECTED
+
+  # Base risk score contribution from DTI band
+  risk_score_base:
+    low_risk:    10      # 0–30% DTI adds 10 pts to risk score
+    medium_risk: 30      # 31–45% DTI adds 30 pts
+    high_risk:   60      # 46–60% DTI adds 60 pts
+    critical:    90      # >60% DTI adds 90 pts (before clamping)
+
+  # Employment-type DTI adjustments (delta to auto_reject threshold)
+  employment_adjustments:
+    government: +0.05    # Raised threshold — job security premium
+    contract:   -0.05    # Lowered — higher income variability
+
+
+# -----------------------------------------------------------------------------
+# 4. COMPOSITE RISK SCORE CONFIGURATION
+# -----------------------------------------------------------------------------
+risk_score:
+
+  # Component weights must sum to 1.0
+  weights:
+    credit_score:         0.40   # 40% — primary creditworthiness signal
+    dti:                  0.35   # 35% — repayment capacity signal
+    employment_stability: 0.15   # 15% — income continuity signal
+    loan_to_income_ratio: 0.10   # 10% — loan size relative to earnings
+
+  # Decision thresholds
+  approved_below:        40      # risk_score < 40 → APPROVED (if no hard rules fail)
+  review_required_below: 70      # 40 <= risk_score < 70 → REVIEW_REQUIRED
+  rejected_above:        70      # risk_score >= 70 → REJECTED
+
+  # Output clamp range
+  min_score: 0
+  max_score: 100
+
+
+# -----------------------------------------------------------------------------
+# 5. LOAN AMOUNT / TENURE RULES
+# -----------------------------------------------------------------------------
+loan:
+
+  # Absolute system limits
+  min_amount:   10000       # INR — below this is rejected
+  max_amount:   10000000    # INR 1 crore — absolute ceiling
+
+  # Tenure limits in months
+  min_tenure:   6           # 6 months minimum
+  max_tenure:   360         # 30 years maximum (home loans)
+
+  # Loan-to-income ratio limits (loan_amount / annual_income)
+  max_loan_to_income_ratio:
+    unsecured_personal: 3   # Max 3× annual income for personal loans
+    home_loan:          5   # Max 5× annual income for home loans
+    short_term:         2   # Max 2× for tenure < 12 months
+
+  # Loans above this amount require mandatory review regardless of risk score
+  high_value_review_threshold: 2500000   # INR 25 lakhs
+
+
+# -----------------------------------------------------------------------------
+# 6. DECISION CONFIDENCE THRESHOLDS
+# -----------------------------------------------------------------------------
+confidence:
+
+  # Confidence bands for each verdict
+  approved:
+    clear:      0.85    # risk_score << approved_below — high confidence
+    borderline: 0.72    # risk_score just below approved_below
+
+  review_required:
+    upper: 0.70         # Closer to approved boundary
+    lower: 0.52         # Closer to rejection boundary
+
+  rejected:
+    clear:      0.88    # Hard rule triggered — very high confidence
+    borderline: 0.72    # risk_score just above rejected_above
+
+
+# -----------------------------------------------------------------------------
+# 7. COMPLIANCE / AUDIT CONFIGURATION
+# -----------------------------------------------------------------------------
+compliance:
+
+  # Case ID format: CASE-{YYYYMMDD}-{SEQUENCE:04d}
+  case_id_prefix: "CASE"
+  case_id_date_format: "%Y%m%d"
+  case_id_sequence_width: 4     # Zero-padded to 4 digits e.g. 0042
+
+  # Audit record retention (informational — enforced at infrastructure level)
+  retention_years: 7
+
+  # Notification channels (future extensibility — currently UI display only)
+  notification_channels:
+    - display    # Show in Streamlit UI
+    # - email    # Future: email notification
+    # - sms      # Future: SMS notification
+
+
+# -----------------------------------------------------------------------------
+# 8. AGENT PROMPTING CONFIGURATION
+# -----------------------------------------------------------------------------
+agents:
+
+  # Maximum tokens Claude Sonnet should produce per agent call
+  max_response_tokens:
+    applicant_profile:   800
+    financial_risk:      800
+    policy_knowledge:    1200
+    loan_decision:       1000
+    compliance:          800
+
+  # Temperature setting for each agent (lower = more deterministic)
+  temperature:
+    applicant_profile:   0.0   # Validation — must be deterministic
+    financial_risk:      0.0   # Math — must be deterministic
+    policy_knowledge:    0.1   # RAG — slight creativity for synthesis
+    loan_decision:       0.1   # Decision — slight variation acceptable
+    compliance:          0.2   # Notification — more natural language
+
+  # ChromaDB retrieval settings for Policy Knowledge Agent
+  rag:
+    top_k_chunks:   5         # Default number of chunks to retrieve
+    max_top_k:      20        # Maximum allowed top_k
+    chunk_size:     500       # Characters per chunk during ingestion
+    chunk_overlap:  100       # Overlap between consecutive chunks
