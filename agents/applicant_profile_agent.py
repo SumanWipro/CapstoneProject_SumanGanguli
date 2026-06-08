@@ -56,11 +56,10 @@ class ApplicantProfileAgent(BaseAgent):
 
         Returns:
             ProfileResult TypedDict:
-                valid (bool)             — True if all checks pass
-                flags (list[str])        — issue codes, empty if none
-                employment_band (str)    — stable | moderate | unstable
-                age_eligible (bool)      — True if age in [18, 70]
-                income_consistent (bool) — True if income plausible for type
+                income_stability_score (float) — normalized profile stability score (0-100)
+                employment_risk (str)          — low | medium | high
+                credit_history_summary (str)   — human-readable credit summary
+                completeness_flags (list[str]) — completeness/validation flags
 
         Raises:
             json.JSONDecodeError: If Claude returns malformed JSON.
@@ -89,19 +88,53 @@ class ApplicantProfileAgent(BaseAgent):
         # Step 3: Parse structured JSON response
         parsed = self.parse_json_response(raw)
 
+        employment_band = str(parsed.get("employment_band", "unstable"))
+        income_consistent = bool(parsed.get("income_consistent", False))
+        flags = list(parsed.get("flags", []))
+
+        # Case-study alignment fields
+        employment_risk_map = {
+            "stable": "low",
+            "moderate": "medium",
+            "unstable": "high",
+        }
+        employment_risk = employment_risk_map.get(employment_band, "high")
+
+        base_stability_score = {
+            "stable": 85,
+            "moderate": 65,
+            "unstable": 40,
+        }.get(employment_band, 40)
+        income_stability_score = max(0, min(100, base_stability_score if income_consistent else base_stability_score - 25))
+
+        credit_score = int(payload.get("credit_score", 0) or 0)
+        if credit_score >= 750:
+            credit_history_summary = f"Excellent credit history ({credit_score})"
+        elif credit_score >= 650:
+            credit_history_summary = f"Good credit history ({credit_score})"
+        elif credit_score >= 550:
+            credit_history_summary = f"Fair credit history ({credit_score})"
+        else:
+            credit_history_summary = f"Poor credit history ({credit_score})"
+
+        completeness_flags = list(flags)
+        if not bool(parsed.get("age_eligible", False)) and "AGE_INELIGIBLE" not in completeness_flags:
+            completeness_flags.append("AGE_INELIGIBLE")
+        if not income_consistent and "INCOME_INCONSISTENT" not in completeness_flags:
+            completeness_flags.append("INCOME_INCONSISTENT")
+
         result: ProfileResult = {
-            "valid":              bool(parsed.get("valid", False)),
-            "flags":              list(parsed.get("flags", [])),
-            "employment_band":    str(parsed.get("employment_band", "unstable")),
-            "age_eligible":       bool(parsed.get("age_eligible", False)),
-            "income_consistent":  bool(parsed.get("income_consistent", False)),
+            "income_stability_score": float(income_stability_score),
+            "employment_risk": employment_risk,
+            "credit_history_summary": credit_history_summary,
+            "completeness_flags": completeness_flags,
         }
 
         log.info(
             "applicant_profile_agent_complete",
             applicant_id=applicant_id,
-            valid=result["valid"],
-            employment_band=result["employment_band"],
-            flags=result["flags"],
+            employment_risk=result["employment_risk"],
+            income_stability_score=result["income_stability_score"],
+            completeness_flags=result["completeness_flags"],
         )
         return result

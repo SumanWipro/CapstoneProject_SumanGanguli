@@ -12,8 +12,9 @@ Responsibility:
 Tool contract:
     Name:   validate_profile
     Input:  ProfileInput — all 10 applicant fields
-    Output: ProfileOutput — valid, flags, employment_band, age_eligible,
-                            income_consistent
+    Output: ProfileOutput — income_stability_score,
+                            employment_risk, credit_history_summary,
+                            completeness_flags
 
 Schema design:
     Input and output are typed Pydantic models registered on the FastMCP
@@ -103,25 +104,23 @@ class ProfileOutput(BaseModel):
     the ProfileAgentOutput Pydantic model in api/models/agents.py.
     """
 
-    valid: bool = Field(
+    income_stability_score: float = Field(
         ...,
-        description="True if all profile checks pass; False routes to early rejection",
+        ge=0.0,
+        le=100.0,
+        description="Normalized profile stability score (0-100)",
     )
-    flags: list[str] = Field(
+    employment_risk: str = Field(
+        ...,
+        description="Employment risk category: low | medium | high",
+    )
+    credit_history_summary: str = Field(
+        ...,
+        description="Human-readable summary derived from credit score",
+    )
+    completeness_flags: list[str] = Field(
         default_factory=list,
-        description="Validation issue codes e.g. AGE_INELIGIBLE, INCOME_TOO_LOW",
-    )
-    employment_band: str = Field(
-        ...,
-        description="Stability band: stable | moderate | unstable",
-    )
-    age_eligible: bool = Field(
-        ...,
-        description="True if applicant age is between 18 and 70 inclusive",
-    )
-    income_consistent: bool = Field(
-        ...,
-        description="True if income is plausible for declared employment type",
+        description="Case-study aligned completeness and validation flags",
     )
 
 
@@ -149,8 +148,8 @@ def validate_profile(applicant_data: dict[str, Any]) -> dict[str, Any]:
 
     Returns:
         Dict matching ProfileOutput schema:
-            valid (bool), flags (list), employment_band (str),
-            age_eligible (bool), income_consistent (bool)
+            income_stability_score (float), employment_risk (str),
+            credit_history_summary (str), completeness_flags (list)
 
     Raises:
         ValidationError: If applicant_data fails ProfileInput schema.
@@ -175,8 +174,8 @@ def validate_profile(applicant_data: dict[str, Any]) -> dict[str, Any]:
     log.info(
         "validate_profile_tool_complete",
         applicant_id=applicant_data.get("applicant_id"),
-        valid=output.valid,
-        employment_band=output.employment_band,
+        employment_risk=output.employment_risk,
+        income_stability_score=output.income_stability_score,
     )
 
     return output.model_dump()

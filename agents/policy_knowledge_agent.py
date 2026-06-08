@@ -4,7 +4,7 @@ agents/policy_knowledge_agent.py
 Policy Knowledge Agent — Agent 3 of 5.
 
 Agent Responsibility:
-- Accept structured applicant risk context (credit_band, DTI, employment_band,
+- Accept structured applicant risk context (credit_band, DTI, employment_risk,
   loan_amount, loan_tenure, risk_flags)
 - Delegate query construction and ChromaDB retrieval to rag.policy_search.search()
 - Build a prompt injecting the retrieved policy chunks as context
@@ -70,7 +70,7 @@ class PolicyKnowledgeAgent(BaseAgent):
             payload: Dict matching PolicyAgentInput schema:
                 - credit_band     (str)       — from RiskAgentOutput
                 - dti             (float)      — from RiskAgentOutput
-                - employment_band (str)       — from ProfileAgentOutput
+                - employment_risk (str)       — from ProfileAgentOutput
                 - loan_amount     (float)     — from LoanApplicationRequest
                 - loan_tenure     (int)       — from LoanApplicationRequest
                 - risk_flags      (list[str]) — from RiskAgentOutput
@@ -93,7 +93,9 @@ class PolicyKnowledgeAgent(BaseAgent):
         # ------------------------------------------------------------------
         credit_band     = str(payload.get("credit_band", "fair"))
         dti             = float(payload.get("dti", 0.0))
-        employment_band = str(payload.get("employment_band", "stable"))
+        employment_risk = str(payload.get("employment_risk", "medium"))
+        risk_to_band = {"low": "stable", "medium": "moderate", "high": "unstable"}
+        employment_band = risk_to_band.get(employment_risk, "moderate")
         loan_amount     = float(payload.get("loan_amount", 0.0))
         loan_tenure     = int(payload.get("loan_tenure", 12))
         risk_flags      = list(payload.get("risk_flags", []))
@@ -103,7 +105,7 @@ class PolicyKnowledgeAgent(BaseAgent):
             "policy_knowledge_agent_invoked",
             credit_band=credit_band,
             dti=round(dti, 4),
-            employment_band=employment_band,
+            employment_risk=employment_risk,
             loan_amount=loan_amount,
             top_k=top_k,
         )
@@ -139,7 +141,7 @@ class PolicyKnowledgeAgent(BaseAgent):
         prompt = self.build_prompt(
             credit_band=credit_band,
             dti=f"{dti:.4f}",
-            employment_band=employment_band,
+            employment_risk=employment_risk,
             loan_amount=f"{loan_amount:,.0f}",
             loan_tenure=str(loan_tenure),
             risk_flags=", ".join(risk_flags) if risk_flags else "none",

@@ -187,7 +187,41 @@ compliance:
 
 
 # -----------------------------------------------------------------------------
-# 8. AGENT PROMPTING CONFIGURATION
+# 8. REVIEW ACTION ORCHESTRATION
+# -----------------------------------------------------------------------------
+review_action:
+
+  # Queue routing thresholds
+  queue_rules:
+    high_value_threshold: 2500000
+    medium_risk_min: 40
+    high_risk_min: 70
+    high_value_queue: "UNDERWRITING_HIGH_VALUE"
+    high_risk_queue: "UNDERWRITING_HIGH_RISK"
+    medium_risk_queue: "UNDERWRITING_MEDIUM_RISK"
+    default_queue: "UNDERWRITING_GENERAL"
+
+  # Reviewer role mapping
+  reviewer_role_by_queue:
+    UNDERWRITING_HIGH_VALUE: "UNDERWRITER_L3"
+    UNDERWRITING_HIGH_RISK: "UNDERWRITER_L3"
+    UNDERWRITING_MEDIUM_RISK: "UNDERWRITER_L2"
+    UNDERWRITING_GENERAL: "UNDERWRITER_L1"
+
+  default_reviewer_role: "UNDERWRITER_L2"
+  default_owner: "unassigned"
+
+  # SLA values in hours
+  default_sla_hours: 48
+  sla_hours_by_queue:
+    UNDERWRITING_HIGH_VALUE: 24
+    UNDERWRITING_HIGH_RISK: 24
+    UNDERWRITING_MEDIUM_RISK: 48
+    UNDERWRITING_GENERAL: 72
+
+
+# -----------------------------------------------------------------------------
+# 9. AGENT PROMPTING CONFIGURATION
 # -----------------------------------------------------------------------------
 agents:
 

@@ -4,7 +4,7 @@ orchestrator/graph.py
 LangGraph StateGraph builder for the Loan Approval pipeline.
 
 Responsibilities:
-- Register all 7 node functions from orchestrator/nodes.py
+- Register all 8 node functions from orchestrator/nodes.py
 - Define sequential and conditional edges
 - Implement _profile_gate — the conditional router after profile validation
 - Attach MemorySaver checkpointer for state persistence and observability
@@ -21,11 +21,15 @@ Graph topology:
       │                                       │
       │                               policy_knowledge_node
       │                                       │
-      │                               loan_decision_node
-      │                                       │
-      └─(profile invalid)──► early_rejection_node
-                                       │
-                                    compliance_node
+        │                               loan_decision_node
+        │                                       │
+        │                                review_action_node
+        │                                       │
+        └─(profile invalid)──► early_rejection_node
+                                                    │
+                                          review_action_node
+                                                    │
+                                                compliance_node
                                        │
                                       END
 
@@ -35,7 +39,7 @@ Design decisions:
   node-by-node execution. Replace with SqliteSaver/PostgresSaver for
   multi-process or persistent deployments.
 - Conditional edge _profile_gate: checks both early_exit flag (set by
-  validate_input_node) and profile_result.valid (set by profile agent).
+    validate_input_node) and profile_result.completeness_flags (set by profile agent).
   Two conditions because validate_input_node can set early_exit without
   a profile_result being present.
 - The graph is compiled once at API startup (via lifespan in api/main.py)
@@ -69,9 +73,9 @@ def _profile_gate(
     Routing logic (checked in order):
         1. If early_exit == True  → early_rejection_node
            (set by validate_input_node for missing fields or age out-of-range,
-            or by applicant_profile_node when profile_result.valid == False)
+            or by applicant_profile_node when completeness_flags is non-empty)
         2. If profile_result is missing (node errored) → early_rejection_node
-        3. If profile_result.valid == False → early_rejection_node
+        3. If profile_result.completeness_flags is non-empty → early_rejection_node
         4. Otherwise → financial_risk_node
 
     Why check early_exit first:
@@ -95,10 +99,10 @@ def _profile_gate(
         )
         return "early_rejection_node"
 
-    # Condition 2 & 3: profile_result absent or marked invalid
+    # Condition 2 & 3: profile_result absent or has completeness issues
     profile_result = state.get("profile_result")
-    if profile_result is None or not profile_result.get("valid", False):
-        flags = (profile_result or {}).get("flags", [])
+    if profile_result is None or (profile_result or {}).get("completeness_flags", []):
+        flags = (profile_result or {}).get("completeness_flags", [])
         log.info(
             "profile_gate_invalid_profile",
             applicant_id=state.get("applicant_id"),
@@ -110,7 +114,7 @@ def _profile_gate(
     log.info(
         "profile_gate_proceed",
         applicant_id=state.get("applicant_id"),
-        employment_band=profile_result.get("employment_band"),
+        employment_risk=profile_result.get("employment_risk"),
     )
     return "financial_risk_node"
 
@@ -157,6 +161,7 @@ def build_graph():
     builder.add_node("financial_risk_node",    nodes.financial_risk_node)
     builder.add_node("policy_knowledge_node",  nodes.policy_knowledge_node)
     builder.add_node("loan_decision_node",     nodes.loan_decision_node)
+    builder.add_node("review_action_node",     nodes.review_action_node)
     builder.add_node("compliance_node",        nodes.compliance_node)
     builder.add_node("early_rejection_node",   nodes.early_rejection_node)
 
@@ -171,8 +176,9 @@ def build_graph():
     builder.add_edge("validate_input",        "applicant_profile_node")
     builder.add_edge("financial_risk_node",   "policy_knowledge_node")
     builder.add_edge("policy_knowledge_node", "loan_decision_node")
-    builder.add_edge("loan_decision_node",    "compliance_node")
-    builder.add_edge("early_rejection_node",  "compliance_node")
+    builder.add_edge("loan_decision_node",    "review_action_node")
+    builder.add_edge("early_rejection_node",  "review_action_node")
+    builder.add_edge("review_action_node",    "compliance_node")
     builder.add_edge("compliance_node",       END)
 
     # -----------------------------------------------------------------------
@@ -197,6 +203,6 @@ def build_graph():
 
     log.info(
         "langgraph_pipeline_compiled",
-        nodes=list(builder.nodes.keys()) if hasattr(builder, "nodes") else "7 nodes",
+        nodes=list(builder.nodes.keys()) if hasattr(builder, "nodes") else "8 nodes",
     )
     return graph

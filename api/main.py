@@ -26,6 +26,8 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+import httpx
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -38,6 +40,21 @@ from utils.logger import get_logger
 
 log      = get_logger(__name__, component="api_main")
 settings = get_settings()
+
+
+def _mcp_server_ready() -> bool:
+    """
+    Return True if the MCP server is reachable.
+
+    Uses a lightweight HTTP GET against the MCP base URL. Any network
+    or HTTP failure is treated as not ready.
+    """
+    try:
+        timeout = max(1.0, min(settings.mcp_client_timeout_seconds, 5.0))
+        resp = httpx.get(settings.mcp_client_base_url, timeout=timeout)
+        return resp.status_code < 500
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +87,7 @@ async def lifespan(app: FastAPI):
         port=settings.api_port,
         version=settings.api_version,
         model=settings.bedrock_model_id,
+        mcp_base_url=settings.mcp_client_base_url,
     )
 
     try:
@@ -83,6 +101,13 @@ async def lifespan(app: FastAPI):
         log.error("langgraph_graph_failed", error=str(exc))
         # Store None — the /analyze route handles the missing graph gracefully
         app.state.graph = None
+
+    mcp_ready = _mcp_server_ready()
+    app.state.mcp_ready = mcp_ready
+    if mcp_ready:
+        log.info("mcp_server_ready", mcp_base_url=settings.mcp_client_base_url)
+    else:
+        log.warning("mcp_server_unreachable", mcp_base_url=settings.mcp_client_base_url)
 
     yield
 
@@ -167,11 +192,14 @@ def create_app() -> FastAPI:
             1. API is reachable (always true if this endpoint responds)
             2. LangGraph graph is compiled (app.state.graph is not None)
             3. ChromaDB collection is populated (via collection_health_check)
+            4. MCP server is reachable
 
         Returns:
             HealthResponse with status "ok" or "degraded".
         """
         graph_ready = getattr(app.state, "graph", None) is not None
+        mcp_ready = _mcp_server_ready()
+        app.state.mcp_ready = mcp_ready
 
         try:
             from rag.retriever import collection_health_check
@@ -180,7 +208,7 @@ def create_app() -> FastAPI:
         except Exception:
             rag_status = "missing"
 
-        if graph_ready and rag_status == "ready":
+        if graph_ready and rag_status == "ready" and mcp_ready:
             status_val = "ok"
         else:
             status_val = "degraded"
@@ -189,6 +217,7 @@ def create_app() -> FastAPI:
             "health_check",
             graph_ready=graph_ready,
             rag_status=rag_status,
+            mcp_ready=mcp_ready,
             status=status_val,
         )
 

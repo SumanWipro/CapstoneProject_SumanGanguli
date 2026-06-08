@@ -5,7 +5,7 @@ FastMCP server for the Loan Approval System.
 
 Responsibilities:
 - Create the FastMCP application instance with full metadata
-- Register all 5 tools via the @mcp_app.tool() decorator pattern
+- Register all 6 tools via the @mcp_app.tool() decorator pattern
 - Each registered tool wraps the corresponding tool function from mcp/tools/
 - Provide the CLI entry point: python -m mcp.server
 
@@ -41,6 +41,11 @@ from mcp.tools.profile_tools import validate_profile, ProfileInput, ProfileOutpu
 from mcp.tools.risk_tools import calculate_risk, RiskInput, RiskOutput
 from mcp.tools.policy_tools import query_policy, PolicyInput, PolicyOutput
 from mcp.tools.decision_tools import generate_decision, DecisionInput, DecisionOutput
+from mcp.tools.review_action_tools import (
+    orchestrate_review_action,
+    ReviewActionInput,
+    ReviewActionOutput,
+)
 from mcp.tools.compliance_tools import create_audit, AuditInput, AuditOutput
 
 log      = get_logger(__name__, component="mcp_server")
@@ -57,7 +62,8 @@ mcp_app = fastmcp.FastMCP(
     description=(
         "MCP tool server for the Agentic AI Loan Approval System. "
         "Exposes five tools: validate_profile, calculate_risk, query_policy, "
-        "generate_decision, and create_audit. Each tool wraps one AI agent "
+        "generate_decision, orchestrate_review_action, and create_audit. "
+        "Each tool wraps one AI agent "
         "backed by Claude Sonnet on AWS Bedrock."
     ),
 )
@@ -71,9 +77,9 @@ mcp_app = fastmcp.FastMCP(
     name="validate_profile",
     description=(
         "Validate applicant profile data. "
-        "Checks age eligibility (18–70), maps employment type to stability band "
-        "(stable | moderate | unstable), and flags income inconsistencies. "
-        "Returns ProfileOutput with valid flag, issue flags, and employment_band."
+        "Checks profile completeness and derives canonical profile metrics. "
+        "Returns income_stability_score, employment_risk, "
+        "credit_history_summary, and completeness_flags."
     ),
 )
 def tool_validate_profile(applicant_data: dict[str, Any]) -> dict[str, Any]:
@@ -81,15 +87,15 @@ def tool_validate_profile(applicant_data: dict[str, Any]) -> dict[str, Any]:
     MCP-registered wrapper for the validate_profile tool.
 
     Input schema:  ProfileInput  (10 applicant fields)
-    Output schema: ProfileOutput (valid, flags, employment_band, age_eligible,
-                                  income_consistent)
+    Output schema: ProfileOutput (income_stability_score, employment_risk,
+                                  credit_history_summary, completeness_flags)
 
     Args:
         applicant_data: All 10 raw applicant fields from the LoanApplicationRequest.
 
     Returns:
-        ProfileOutput dict. Sets valid=False and populates flags for any
-        eligibility failures, which routes the graph to early_rejection_node.
+        ProfileOutput dict. Any non-empty completeness_flags routes the graph
+        to early_rejection_node.
     """
     return validate_profile(applicant_data)
 
@@ -112,11 +118,11 @@ def tool_calculate_risk(risk_data: dict[str, Any]) -> dict[str, Any]:
     MCP-registered wrapper for the calculate_risk tool.
 
     Input schema:  RiskInput  (income, liabilities, credit_score, loan_amount,
-                               loan_tenure, employment_band)
+                               loan_tenure, employment_risk)
     Output schema: RiskOutput (dti, credit_band, risk_score, risk_flags)
 
     Args:
-        risk_data: Financial fields plus employment_band from validate_profile output.
+        risk_data: Financial fields plus employment_risk from validate_profile output.
 
     Returns:
         RiskOutput dict with all financial risk metrics.
@@ -142,7 +148,7 @@ def tool_query_policy(policy_query: dict[str, Any]) -> dict[str, Any]:
     """
     MCP-registered wrapper for the query_policy tool.
 
-    Input schema:  PolicyInput  (credit_band, dti, employment_band, loan_amount,
+    Input schema:  PolicyInput  (credit_band, dti, employment_risk, loan_amount,
                                  loan_tenure, risk_flags, top_k)
     Output schema: PolicyOutput (chunks, sources, applicable_clauses, policy_summary)
 
@@ -186,7 +192,36 @@ def tool_generate_decision(decision_data: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Tool 5: create_audit  (Compliance Agent)
+# Tool 5: orchestrate_review_action  (Review Action Orchestrator)
+# ---------------------------------------------------------------------------
+
+@mcp_app.tool(
+    name="orchestrate_review_action",
+    description=(
+        "Assign explicit review workflow actions for borderline cases. "
+        "For REVIEW_REQUIRED outcomes, sets queue assignment, reviewer role, "
+        "owner placeholder, SLA due timestamp, and initial lifecycle status. "
+        "For non-review outcomes, returns a no-action metadata payload."
+    ),
+)
+def tool_orchestrate_review_action(action_data: dict[str, Any]) -> dict[str, Any]:
+    """
+    MCP-registered wrapper for review action orchestration.
+
+    Input schema:  ReviewActionInput  (decision context + profile/risk signals)
+    Output schema: ReviewActionOutput (action + queue + SLA + lifecycle fields)
+
+    Args:
+        action_data: Decision context used to assign review workflow actions.
+
+    Returns:
+        ReviewActionOutput dict with action metadata for response and audit.
+    """
+    return orchestrate_review_action(action_data)
+
+
+# ---------------------------------------------------------------------------
+# Tool 6: create_audit  (Compliance Agent)
 # ---------------------------------------------------------------------------
 
 @mcp_app.tool(
@@ -235,6 +270,7 @@ def get_registered_tools() -> list[dict[str, str]]:
         {"name": "calculate_risk",     "agent": "FinancialRiskAgent"},
         {"name": "query_policy",       "agent": "PolicyKnowledgeAgent"},
         {"name": "generate_decision",  "agent": "LoanDecisionAgent"},
+        {"name": "orchestrate_review_action", "agent": "ReviewActionOrchestrator"},
         {"name": "create_audit",       "agent": "ComplianceAgent"},
     ]
 

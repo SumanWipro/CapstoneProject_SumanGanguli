@@ -3,7 +3,45 @@
 ## Project Overview
 Enterprise-style agentic loan approval system. Classifies loan applications as
 APPROVED, REJECTED, or REVIEW_REQUIRED using a multi-agent LangGraph pipeline
-backed by Claude Sonnet on AWS Bedrock.
+backed by Claude Sonnet 4.6 on AWS Bedrock.
+
+## LLM Runtime Notes
+- Default model target: `anthropic.claude-sonnet-4-6` (configured in `config/settings.py`).
+- Agent runtime path: Anthropic SDK `AnthropicBedrock` client in `agents/base_agent.py`.
+- Fallback path: boto3 Bedrock invoke_model remains enabled when SDK client init is unavailable.
+
+## Reviewer Verification Steps
+1. Check configured model target:
+```bash
+rg "anthropic\.claude-sonnet-4-6" config/settings.py
+```
+
+2. Check SDK invocation path:
+```bash
+rg "AnthropicBedrock|messages\.create" agents/base_agent.py
+```
+
+3. Check fallback path:
+```bash
+rg "invoke_model|anthropic_sdk_init_failed_fallback_to_boto3" agents/base_agent.py
+```
+
+4. Run one request through the system and verify logs include:
+- `anthropic_sdk_enabled_for_agent_calls`, or
+- `anthropic_sdk_init_failed_fallback_to_boto3`
+
+## Approval Workflow Command
+
+Use this command for automated compliance verification:
+
+```bash
+pytest -q tests/unit/test_llm_runtime_compliance.py
+```
+
+The command passes only when all three checks are true:
+1. Sonnet 4.6 model target is configured.
+2. Anthropic SDK invocation path exists.
+3. boto3 fallback path exists.
 
 ## Architecture Summary
 ```

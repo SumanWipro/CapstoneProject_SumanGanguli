@@ -149,6 +149,51 @@ class LoanDecisionResponse(BaseModel):
         description="Debt-to-income ratio (existing_liabilities / monthly_income).",
     )
 
+    action_taken: str = Field(
+        default="NO_ACTION_REQUIRED",
+        description="Operational action selected for this case.",
+    )
+
+    notification_status: str = Field(
+        default="NOT_SENT",
+        description="Notification dispatch status for this case.",
+    )
+
+    review_queue: Optional[str] = Field(
+        default=None,
+        description="Assigned review queue for manual-review cases.",
+    )
+
+    manual_review_owner: Optional[str] = Field(
+        default=None,
+        description="Current owner handling manual review.",
+    )
+
+    reviewer_role: Optional[str] = Field(
+        default=None,
+        description="Role expected to process the manual review.",
+    )
+
+    review_due_timestamp: Optional[str] = Field(
+        default=None,
+        description="ISO 8601 due timestamp for manual review SLA.",
+    )
+
+    review_status: str = Field(
+        default="NOT_REQUIRED",
+        description="Manual-review lifecycle status for the case.",
+    )
+
+    status_transition: str = Field(
+        default="NONE",
+        description="Latest lifecycle transition label.",
+    )
+
+    transition_history: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="Ordered lifecycle transition entries.",
+    )
+
     model_config = {
         "frozen": True,
         "json_schema_extra": {
@@ -170,6 +215,15 @@ class LoanDecisionResponse(BaseModel):
                 "risk_score":   22.5,
                 "credit_band":  "good",
                 "dti":          0.225,
+                "action_taken": "NO_ACTION_REQUIRED",
+                "notification_status": "SENT_DISPLAY",
+                "review_queue": None,
+                "manual_review_owner": None,
+                "reviewer_role": None,
+                "review_due_timestamp": None,
+                "review_status": "NOT_REQUIRED",
+                "status_transition": "NONE",
+                "transition_history": [],
             }
         },
     }

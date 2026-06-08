@@ -253,8 +253,26 @@ with tab_trace:
                     "explanation": result.get("explanation", ""),
                 })
 
+    # ── Review action node (always runs) ─────────────────────────────────
+    with st.expander("Node 7 — review_action_node (always executes)", expanded=True):
+        col_ra_a, col_ra_b = st.columns([1, 2])
+        with col_ra_a:
+            st.markdown("**Status:** ✅ Executed")
+            st.markdown("**MCP Tool:** `orchestrate_review_action`")
+            st.markdown("**Agent:** ReviewActionOrchestrator")
+            st.markdown(f"**Review Status:** `{result.get('review_status', 'NOT_REQUIRED')}`")
+        with col_ra_b:
+            st.json({
+                "action_taken": result.get("action_taken"),
+                "review_queue": result.get("review_queue"),
+                "manual_review_owner": result.get("manual_review_owner"),
+                "reviewer_role": result.get("reviewer_role"),
+                "review_due_timestamp": result.get("review_due_timestamp"),
+                "status_transition": result.get("status_transition"),
+            })
+
     # ── Compliance node (always runs) ─────────────────────────────────────
-    with st.expander("Node 7 — compliance_node (always executes)", expanded=True):
+    with st.expander("Node 8 — compliance_node (always executes)", expanded=True):
         col_nc_a, col_nc_b = st.columns([1, 2])
         with col_nc_a:
             st.markdown("**Status:** ✅ Executed")
@@ -308,7 +326,14 @@ with tab_agents:
             "Triggers Early Exit": "No",
         },
         {
-            "Agent": "5. Compliance Agent",
+            "Agent": "5. Review Action Orchestrator",
+            "MCP Tool": "orchestrate_review_action",
+            "Responsibility": "Assigns queue, reviewer role, owner placeholder, and SLA due timestamp for manual review",
+            "Returns": "action_taken, review_queue, reviewer_role, review_due_timestamp, review_status",
+            "Triggers Early Exit": "No (always runs)",
+        },
+        {
+            "Agent": "6. Compliance Agent",
             "MCP Tool": "create_audit",
             "Responsibility": "Generates Case ID, writes audit record, produces applicant notification",
             "Returns": "case_id, log_path, notification_summary",

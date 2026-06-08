@@ -127,6 +127,15 @@ class ComplianceAgent(BaseAgent):
             "confidence_score":     confidence,
             "explanation":          explanation,
             "notification_summary": notification_summary,
+            "action_taken":         payload.get("action_taken", "NO_ACTION_REQUIRED"),
+            "notification_status":  payload.get("notification_status", "NOT_SENT"),
+            "review_queue":         payload.get("review_queue"),
+            "manual_review_owner":  payload.get("manual_review_owner"),
+            "reviewer_role":        payload.get("reviewer_role"),
+            "review_due_timestamp": payload.get("review_due_timestamp"),
+            "review_status":        payload.get("review_status", "NOT_REQUIRED"),
+            "status_transition":    payload.get("status_transition", "NONE"),
+            "transition_history":   payload.get("transition_history", []),
             "decision_date":        decision_date,
             "application_timestamp":payload.get("timestamp", ""),
             # Risk metrics (for dashboard analytics)
@@ -135,8 +144,10 @@ class ComplianceAgent(BaseAgent):
             "risk_score":           risk_result.get("risk_score"),
             "risk_flags":           risk_result.get("risk_flags", []),
             # Profile metrics
-            "employment_band":      profile_result.get("employment_band"),
-            "age_eligible":         profile_result.get("age_eligible"),
+            "employment_risk":      profile_result.get("employment_risk"),
+            "income_stability_score": profile_result.get("income_stability_score"),
+            "credit_history_summary": profile_result.get("credit_history_summary"),
+            "completeness_flags":   profile_result.get("completeness_flags", []),
         }
 
         # Step 7: Write to audit/logs/

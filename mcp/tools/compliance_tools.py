@@ -75,6 +75,42 @@ class AuditInput(BaseModel):
         ...,
         description="Original application submission timestamp (ISO 8601)",
     )
+    action_taken: str = Field(
+        default="NO_ACTION_REQUIRED",
+        description="Operational action selected by review action orchestration",
+    )
+    notification_status: str = Field(
+        default="NOT_SENT",
+        description="Notification dispatch status for the case",
+    )
+    review_queue: str | None = Field(
+        default=None,
+        description="Assigned manual review queue",
+    )
+    manual_review_owner: str | None = Field(
+        default=None,
+        description="Current owner for manual review",
+    )
+    reviewer_role: str | None = Field(
+        default=None,
+        description="Assigned reviewer role for this case",
+    )
+    review_due_timestamp: str | None = Field(
+        default=None,
+        description="ISO 8601 SLA due timestamp for manual review",
+    )
+    review_status: str = Field(
+        default="NOT_REQUIRED",
+        description="Current lifecycle status for review processing",
+    )
+    status_transition: str = Field(
+        default="NONE",
+        description="Most recent lifecycle transition label",
+    )
+    transition_history: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="Ordered lifecycle transition entries",
+    )
 
 
 class AuditOutput(BaseModel):

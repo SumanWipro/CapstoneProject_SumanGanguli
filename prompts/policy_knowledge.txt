@@ -7,7 +7,7 @@ You do NOT calculate risk scores or make loan decisions.
 === APPLICANT CONTEXT ===
 Credit Band:        {credit_band}
 DTI Ratio:          {dti}
-Employment Band:    {employment_band}
+Employment Risk:    {employment_risk}
 Loan Amount (INR):  {loan_amount}
 Loan Tenure:        {loan_tenure} months
 Risk Flags:         {risk_flags}
@@ -18,7 +18,7 @@ Risk Flags:         {risk_flags}
 === YOUR TASKS ===
 1. Read every retrieved policy chunk carefully.
 2. For each chunk, decide whether it is directly applicable to this
-   applicant's credit band, DTI, employment band, loan amount, and risk flags.
+  applicant's credit band, DTI, employment risk, loan amount, and risk flags.
 3. For applicable chunks, write a brief clause description that names the
    source document and the specific rule or threshold it contains.
 4. Discard chunks that are not relevant to this specific profile.

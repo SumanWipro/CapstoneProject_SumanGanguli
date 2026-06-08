@@ -34,6 +34,14 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
+try:
+    from anthropic import AnthropicBedrock, APIError
+    _ANTHROPIC_SDK_AVAILABLE = True
+except Exception:
+    AnthropicBedrock = None  # type: ignore[assignment]
+    APIError = None  # type: ignore[assignment]
+    _ANTHROPIC_SDK_AVAILABLE = False
+
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -51,6 +59,7 @@ _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 # Bedrock request defaults — overridden per-agent via loan_rules.yaml
 _DEFAULT_MAX_TOKENS  = 1024
 _DEFAULT_TEMPERATURE = 0.0
+_RETRYABLE_EXCEPTIONS = (ClientError,) + ((APIError,) if APIError is not None else ())
 
 
 class BaseAgent(ABC):
@@ -73,6 +82,7 @@ class BaseAgent(ABC):
         """Initialise Bedrock client, load prompt template, read agent config."""
         self.settings         = get_settings()
         self.bedrock_client   = self._build_bedrock_client()
+        self.anthropic_client = self._build_anthropic_sdk_client()
         self.model_id         = self.settings.bedrock_model_id
         self._prompt_template = self._load_prompt()
 
@@ -152,7 +162,7 @@ class BaseAgent(ABC):
     # ------------------------------------------------------------------
 
     @retry(
-        retry=retry_if_exception_type(ClientError),
+        retry=retry_if_exception_type(_RETRYABLE_EXCEPTIONS),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
@@ -190,38 +200,66 @@ class BaseAgent(ABC):
             prompt_chars=len(prompt),
         )
 
-        # Bedrock Messages API payload
-        body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens":        self._max_tokens,
-            "temperature":       self._temperature,
-            "system": (
-                "You are a precise financial analysis assistant. "
-                "Always respond with valid JSON only — no markdown fences, "
-                "no explanation text before or after the JSON object."
-            ),
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-        })
-
-        response = self.bedrock_client.invoke_model(
-            modelId     = self.model_id,
-            body        = body,
-            contentType = "application/json",
-            accept      = "application/json",
-        )
-
-        response_body = json.loads(response["body"].read())
-
-        # Extract text from the first content block
-        content_blocks = response_body.get("content", [])
-        if not content_blocks:
-            raise RuntimeError(
-                f"Bedrock returned an empty content list for model {self.model_id}."
+        if self.anthropic_client is not None:
+            response = self.anthropic_client.messages.create(
+                model=self.model_id,
+                max_tokens=self._max_tokens,
+                temperature=self._temperature,
+                system=(
+                    "You are a precise financial analysis assistant. "
+                    "Always respond with valid JSON only — no markdown fences, "
+                    "no explanation text before or after the JSON object."
+                ),
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
             )
 
-        raw_text = content_blocks[0].get("text", "")
+            content_blocks = getattr(response, "content", []) or []
+            raw_text = ""
+            for block in content_blocks:
+                text = getattr(block, "text", "")
+                if text:
+                    raw_text = text
+                    break
+
+            if not raw_text:
+                raise RuntimeError(
+                    f"Anthropic SDK returned empty content for model {self.model_id}."
+                )
+        else:
+            # Bedrock Messages API payload (fallback path)
+            body = json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens":        self._max_tokens,
+                "temperature":       self._temperature,
+                "system": (
+                    "You are a precise financial analysis assistant. "
+                    "Always respond with valid JSON only — no markdown fences, "
+                    "no explanation text before or after the JSON object."
+                ),
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ],
+            })
+
+            response = self.bedrock_client.invoke_model(
+                modelId     = self.model_id,
+                body        = body,
+                contentType = "application/json",
+                accept      = "application/json",
+            )
+
+            response_body = json.loads(response["body"].read())
+
+            # Extract text from the first content block
+            content_blocks = response_body.get("content", [])
+            if not content_blocks:
+                raise RuntimeError(
+                    f"Bedrock returned an empty content list for model {self.model_id}."
+                )
+
+            raw_text = content_blocks[0].get("text", "")
 
         log.debug(
             "claude_response_received",
@@ -299,6 +337,33 @@ class BaseAgent(ABC):
             aws_access_key_id     = self.settings.aws_access_key_id,
             aws_secret_access_key = self.settings.aws_secret_access_key,
         )
+
+    def _build_anthropic_sdk_client(self):
+        """
+        Build Anthropic Bedrock client when SDK is available.
+
+        Returns:
+            AnthropicBedrock client instance when available, otherwise None.
+        """
+        if not _ANTHROPIC_SDK_AVAILABLE or AnthropicBedrock is None:
+            log.warning("anthropic_sdk_unavailable_fallback_to_boto3")
+            return None
+
+        try:
+            client = AnthropicBedrock(
+                aws_region=self.settings.aws_region,
+                aws_access_key=self.settings.aws_access_key_id or None,
+                aws_secret_key=self.settings.aws_secret_access_key or None,
+            )
+            log.info("anthropic_sdk_enabled_for_agent_calls", model=self.settings.bedrock_model_id)
+            return client
+        except Exception as exc:
+            log.warning(
+                "anthropic_sdk_init_failed_fallback_to_boto3",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            return None
 
     def _load_prompt(self) -> str:
         """

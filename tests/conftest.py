@@ -178,11 +178,10 @@ def all_scenarios() -> list[dict[str, Any]]:
 def valid_profile_result() -> dict[str, Any]:
     """ProfileResult for a valid salaried applicant."""
     return {
-        "valid":              True,
-        "flags":              [],
-        "employment_band":    "stable",
-        "age_eligible":       True,
-        "income_consistent":  True,
+        "income_stability_score": 85.0,
+        "employment_risk": "low",
+        "credit_history_summary": "Excellent credit history (780)",
+        "completeness_flags": [],
     }
 
 
@@ -190,11 +189,10 @@ def valid_profile_result() -> dict[str, Any]:
 def invalid_profile_result() -> dict[str, Any]:
     """ProfileResult for an ineligible applicant (age > 70)."""
     return {
-        "valid":              False,
-        "flags":              ["AGE_INELIGIBLE"],
-        "employment_band":    "stable",
-        "age_eligible":       False,
-        "income_consistent":  True,
+        "income_stability_score": 35.0,
+        "employment_risk": "high",
+        "credit_history_summary": "Poor credit history (500)",
+        "completeness_flags": ["AGE_INELIGIBLE"],
     }
 
 

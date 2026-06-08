@@ -4,7 +4,7 @@ orchestrator/nodes.py
 LangGraph node functions for the Loan Approval pipeline.
 
 Responsibilities:
-- One function per graph node (7 total)
+- One function per graph node (8 total)
 - Each node receives the full AgentState, calls the appropriate MCP tool,
   writes results back into state, and returns a partial state dict
 - Nodes NEVER import or call agents directly — always via MCP tool functions
@@ -23,30 +23,24 @@ Node execution order:
     policy_knowledge_node        — query_policy MCP tool
         ↓
     loan_decision_node           — generate_decision MCP tool
+        ↓
+    review_action_node           — orchestrate_review_action MCP tool
         ↓                              ↑ early_rejection_node also feeds here
     compliance_node              — create_audit MCP tool
         ↓
     END
 
-Design decision — nodes call MCP tool functions directly (not over HTTP):
-    In production, nodes would call tools via an MCP client over the network.
-    For this capstone, the MCP tool functions are called in-process for
-    simplicity and speed. The abstraction boundary is preserved — nodes
-    import from mcp.tools, not from agents — so replacing with HTTP calls
-    only requires changing the import and call site in each node function.
+Design decision — nodes call MCP tools through a client adapter:
+    Nodes invoke tools via orchestrator.mcp_client.MCPClient, which routes
+    requests to the MCP server over a standardized protocol boundary.
+    Nodes do not import agent or tool implementation modules directly.
 """
 
 from __future__ import annotations
 
 from orchestrator.state import AgentState
+from orchestrator.mcp_client import get_mcp_client
 from utils.logger import get_logger
-
-# MCP tool imports — nodes only import tools, never agents directly
-from mcp.tools.profile_tools   import validate_profile
-from mcp.tools.risk_tools      import calculate_risk
-from mcp.tools.policy_tools    import query_policy
-from mcp.tools.decision_tools  import generate_decision
-from mcp.tools.compliance_tools import create_audit
 
 log = get_logger(__name__, component="nodes")
 
@@ -126,9 +120,8 @@ def applicant_profile_node(state: AgentState) -> dict:
     Builds the ProfileInput payload from the 10 raw applicant fields,
     calls the tool, and returns the result as profile_result.
 
-    If the agent marks the profile invalid (e.g. age_eligible=False,
-    income_consistent=False), sets early_exit=True so the graph routes
-    to early_rejection_node.
+    If completeness_flags is non-empty, sets early_exit=True so the graph
+    routes to early_rejection_node.
 
     Args:
         state: AgentState with all input fields present (guaranteed by
@@ -154,22 +147,23 @@ def applicant_profile_node(state: AgentState) -> dict:
             "timestamp":            state["timestamp"],
         }
 
-        profile_result = validate_profile(applicant_data)
+        profile_result = get_mcp_client().call_tool("validate_profile", applicant_data)
 
-        # If profile invalid, flag for early exit
-        early_exit = not profile_result.get("valid", False)
+        # If profile contains completeness issues, flag for early exit
+        completeness_flags = profile_result.get("completeness_flags", [])
+        early_exit = len(completeness_flags) > 0
         if early_exit:
             log.warning(
                 "applicant_profile_invalid",
                 applicant_id=applicant_id,
-                flags=profile_result.get("flags", []),
+                completeness_flags=completeness_flags,
             )
 
         log.info(
             "applicant_profile_node_complete",
             applicant_id=applicant_id,
-            valid=profile_result.get("valid"),
-            employment_band=profile_result.get("employment_band"),
+            employment_risk=profile_result.get("employment_risk"),
+            income_stability_score=profile_result.get("income_stability_score"),
         )
         return {"profile_result": profile_result, "early_exit": early_exit}
 
@@ -191,7 +185,7 @@ def financial_risk_node(state: AgentState) -> dict:
     Call the calculate_risk MCP tool and write RiskResult into state.
 
     Builds the RiskInput payload combining financial fields from the
-    original request with employment_band from profile_result.
+    original request with employment_risk from profile_result.
 
     Args:
         state: AgentState with profile_result populated (guaranteed by
@@ -206,7 +200,7 @@ def financial_risk_node(state: AgentState) -> dict:
 
     try:
         profile_result = state.get("profile_result") or {}
-        employment_band = profile_result.get("employment_band", "stable")
+        employment_risk = profile_result.get("employment_risk", "medium")
 
         risk_data = {
             "income":               state["income"],
@@ -214,10 +208,10 @@ def financial_risk_node(state: AgentState) -> dict:
             "credit_score":         state["credit_score"],
             "loan_amount":          state["loan_amount"],
             "loan_tenure":          state["loan_tenure"],
-            "employment_band":      employment_band,
+            "employment_risk":      employment_risk,
         }
 
-        risk_result = calculate_risk(risk_data)
+        risk_result = get_mcp_client().call_tool("calculate_risk", risk_data)
 
         log.info(
             "financial_risk_node_complete",
@@ -259,16 +253,17 @@ def policy_knowledge_node(state: AgentState) -> dict:
         risk_result    = state.get("risk_result") or {}
         profile_result = state.get("profile_result") or {}
 
+        employment_risk = profile_result.get("employment_risk", "medium")
         policy_query = {
             "credit_band":     risk_result.get("credit_band", "fair"),
             "dti":             risk_result.get("dti", 0.0),
-            "employment_band": profile_result.get("employment_band", "stable"),
+            "employment_risk": employment_risk,
             "loan_amount":     state["loan_amount"],
             "loan_tenure":     state["loan_tenure"],
             "risk_flags":      risk_result.get("risk_flags", []),
         }
 
-        policy_chunks = query_policy(policy_query)
+        policy_chunks = get_mcp_client().call_tool("query_policy", policy_query)
 
         log.info(
             "policy_knowledge_node_complete",
@@ -329,7 +324,7 @@ def loan_decision_node(state: AgentState) -> dict:
             "policy_summary": policy_summary,
         }
 
-        decision_result = generate_decision(decision_data)
+        decision_result = get_mcp_client().call_tool("generate_decision", decision_data)
 
         log.info(
             "loan_decision_node_complete",
@@ -358,7 +353,95 @@ def loan_decision_node(state: AgentState) -> dict:
 
 
 # ===========================================================================
-# Node 6: early_rejection_node
+# Node 6: review_action_node
+# ===========================================================================
+
+def review_action_node(state: AgentState) -> dict:
+    """
+    Assign explicit next-step actions for manual-review workflow.
+
+    REVIEW_REQUIRED cases are routed to a review queue with SLA metadata.
+    Non-review verdicts receive a consistent no-action payload so downstream
+    APIs and audit logs stay schema-consistent.
+
+    Args:
+        state: AgentState with verdict and decision context available.
+
+    Returns:
+        Dict containing action_result plus promoted top-level action fields.
+    """
+    applicant_id = state.get("applicant_id", "UNKNOWN")
+    verdict = state.get("verdict", "REVIEW_REQUIRED")
+    log.info(
+        "review_action_node_called",
+        applicant_id=applicant_id,
+        verdict=verdict,
+    )
+
+    try:
+        action_data = {
+            "applicant_id": applicant_id,
+            "verdict": verdict,
+            "confidence": state.get("confidence_score", 0.5),
+            "loan_amount": state.get("loan_amount", 0.0),
+            "location": state.get("location", ""),
+            "timestamp": state.get("timestamp", ""),
+            "profile_result": state.get("profile_result") or {},
+            "risk_result": state.get("risk_result") or {},
+        }
+
+        action_result = get_mcp_client().call_tool("orchestrate_review_action", action_data)
+
+        log.info(
+            "review_action_node_complete",
+            applicant_id=applicant_id,
+            review_status=action_result.get("review_status"),
+            review_queue=action_result.get("review_queue"),
+        )
+
+        return {
+            "action_result": action_result,
+            "action_taken": action_result.get("action_taken", "NO_ACTION_REQUIRED"),
+            "notification_status": action_result.get("notification_status", "NOT_SENT"),
+            "review_queue": action_result.get("review_queue"),
+            "manual_review_owner": action_result.get("manual_review_owner"),
+            "reviewer_role": action_result.get("reviewer_role"),
+            "review_due_timestamp": action_result.get("review_due_timestamp"),
+            "review_status": action_result.get("review_status", "NOT_REQUIRED"),
+            "status_transition": action_result.get("status_transition", "NONE"),
+            "transition_history": action_result.get("transition_history", []),
+        }
+
+    except Exception as exc:
+        log.error("review_action_node_error", applicant_id=applicant_id, error=str(exc))
+        fallback = {
+            "action_taken": "MANUAL_REVIEW_INITIATED" if verdict == "REVIEW_REQUIRED" else "NO_ACTION_REQUIRED",
+            "notification_status": "NOT_SENT",
+            "review_queue": None,
+            "manual_review_owner": "unassigned" if verdict == "REVIEW_REQUIRED" else None,
+            "reviewer_role": "UNDERWRITER_L2" if verdict == "REVIEW_REQUIRED" else None,
+            "review_due_timestamp": None,
+            "review_status": "REVIEW_REQUIRED_CREATED" if verdict == "REVIEW_REQUIRED" else "NOT_REQUIRED",
+            "status_transition": "NONE",
+            "transition_history": [],
+        }
+        return {
+            "action_result": fallback,
+            "action_taken": fallback["action_taken"],
+            "notification_status": fallback["notification_status"],
+            "review_queue": fallback["review_queue"],
+            "manual_review_owner": fallback["manual_review_owner"],
+            "reviewer_role": fallback["reviewer_role"],
+            "review_due_timestamp": fallback["review_due_timestamp"],
+            "review_status": fallback["review_status"],
+            "status_transition": fallback["status_transition"],
+            "transition_history": fallback["transition_history"],
+            "error": f"Review action orchestration failed: {exc}",
+        }
+
+
+# ===========================================================================
+# Node 7: early_rejection_node
 # ===========================================================================
 
 def early_rejection_node(state: AgentState) -> dict:
@@ -367,10 +450,11 @@ def early_rejection_node(state: AgentState) -> dict:
 
     Invoked when profile_gate routes here due to early_exit=True. Sets
     REJECTED verdict and derives a human-readable explanation from the
-    error or profile flags — without any LLM call (zero agent cost).
+    error or profile completeness flags — without any LLM call (zero agent cost).
 
     Args:
-        state: AgentState with early_exit=True. error or profile_result.flags
+         state: AgentState with early_exit=True. error or
+             profile_result.completeness_flags
                contains the reason for rejection.
 
     Returns:
@@ -383,14 +467,14 @@ def early_rejection_node(state: AgentState) -> dict:
     # Build explanation from error message or profile flags
     error_msg      = state.get("error", "")
     profile_result = state.get("profile_result") or {}
-    flags          = profile_result.get("flags", [])
+    completeness_flags = profile_result.get("completeness_flags", [])
 
     if error_msg:
         explanation = f"Application rejected: {error_msg}"
-    elif flags:
+    elif completeness_flags:
         explanation = (
             f"Application rejected at eligibility screening. "
-            f"Issues detected: {'; '.join(flags)}."
+            f"Issues detected: {'; '.join(completeness_flags)}."
         )
     else:
         explanation = (
@@ -419,7 +503,7 @@ def early_rejection_node(state: AgentState) -> dict:
 
 
 # ===========================================================================
-# Node 7: compliance_node
+# Node 8: compliance_node
 # ===========================================================================
 
 def compliance_node(state: AgentState) -> dict:
@@ -451,9 +535,18 @@ def compliance_node(state: AgentState) -> dict:
             "profile_result": state.get("profile_result") or {},
             "risk_result":    state.get("risk_result") or {},
             "timestamp":      state.get("timestamp", ""),
+            "action_taken":   state.get("action_taken", "NO_ACTION_REQUIRED"),
+            "notification_status": state.get("notification_status", "NOT_SENT"),
+            "review_queue":   state.get("review_queue"),
+            "manual_review_owner": state.get("manual_review_owner"),
+            "reviewer_role":  state.get("reviewer_role"),
+            "review_due_timestamp": state.get("review_due_timestamp"),
+            "review_status":  state.get("review_status", "NOT_REQUIRED"),
+            "status_transition": state.get("status_transition", "NONE"),
+            "transition_history": state.get("transition_history", []),
         }
 
-        audit_record = create_audit(case_data)
+        audit_record = get_mcp_client().call_tool("create_audit", case_data)
 
         log.info(
             "compliance_node_complete",

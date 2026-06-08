@@ -11,7 +11,7 @@ Responsibility:
 
 Tool contract:
     Name:   query_policy
-    Input:  PolicyInput  — credit_band, dti, employment_band, loan_amount,
+    Input:  PolicyInput  — credit_band, dti, employment_risk, loan_amount,
                            loan_tenure, risk_flags, top_k
     Output: PolicyOutput — chunks, sources, applicable_clauses, policy_summary
 
@@ -41,7 +41,7 @@ class PolicyInput(BaseModel):
     """
     Input schema for the query_policy MCP tool.
 
-    Built from the outputs of validate_profile (employment_band) and
+    Built from the outputs of validate_profile (employment_risk) and
     calculate_risk (credit_band, dti, risk_flags) combined with the
     original request fields (loan_amount, loan_tenure).
     """
@@ -54,9 +54,9 @@ class PolicyInput(BaseModel):
         ..., ge=0.0,
         description="Debt-to-income ratio from RiskOutput",
     )
-    employment_band: str = Field(
+    employment_risk: str = Field(
         ...,
-        description="Employment stability from ProfileOutput: stable | moderate | unstable",
+        description="Employment risk from ProfileOutput: low | medium | high",
     )
     loan_amount: float = Field(
         ..., gt=0,

@@ -138,10 +138,10 @@ class Settings(BaseSettings):
         description="AWS region where the Bedrock endpoint is located.",
     )
     bedrock_model_id: str = Field(
-        default="anthropic.claude-sonnet-4-5",
+        default="anthropic.claude-sonnet-4-6",
         description=(
             "Bedrock model ID for Claude Sonnet. "
-            "Example: anthropic.claude-sonnet-4-5"
+            "Example: anthropic.claude-sonnet-4-6"
         ),
     )
 
@@ -177,6 +177,30 @@ class Settings(BaseSettings):
         ge=1,
         le=65535,
         description="FastMCP server listen port.",
+    )
+
+    # ------------------------------------------------------------------
+    # MCP Client (used by orchestrator for tool invocation)
+    # ------------------------------------------------------------------
+
+    mcp_client_base_url: str = Field(
+        default="http://localhost:8080",
+        description=(
+            "Base URL for the MCP server as seen by orchestrator/client code. "
+            "Must not have a trailing slash."
+        ),
+    )
+    mcp_client_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=120,
+        description="Timeout in seconds for one MCP tool invocation.",
+    )
+    mcp_client_max_retries: int = Field(
+        default=2,
+        ge=0,
+        le=10,
+        description="Maximum retry attempts for failed MCP tool invocations.",
     )
 
     # ------------------------------------------------------------------
@@ -295,6 +319,12 @@ class Settings(BaseSettings):
     @classmethod
     def strip_trailing_slash(cls, v: str) -> str:
         """Remove trailing slash from base URL to prevent double-slash in paths."""
+        return v.rstrip("/")
+
+    @field_validator("mcp_client_base_url")
+    @classmethod
+    def strip_trailing_slash_from_mcp_client_base_url(cls, v: str) -> str:
+        """Remove trailing slash from MCP client base URL."""
         return v.rstrip("/")
 
     # ------------------------------------------------------------------

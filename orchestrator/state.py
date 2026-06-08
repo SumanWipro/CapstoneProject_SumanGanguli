@@ -42,25 +42,21 @@ class ProfileResult(TypedDict, total=False):
     Output written by applicant_profile_node into state["profile_result"].
 
     Fields:
-        valid:             True only if all profile checks pass. False triggers
-                           routing to early_rejection_node.
-        flags:             List of validation issue codes. Empty = no issues.
-                           Example values: "AGE_INELIGIBLE", "INCOME_TOO_LOW",
-                           "EMPLOYMENT_UNSTABLE", "INCOME_INCONSISTENT".
-        employment_band:   Stability classification of employment_type.
-                           "stable"   → salaried, government
-                           "moderate" → self_employed, contract
-                           "unstable" → unemployed, student
-        age_eligible:      True if age is in the range [18, 70] inclusive.
-        income_consistent: True if income is plausible for the declared
-                           employment type (not implausibly low).
+        income_stability_score:
+                           Normalized profile stability score for income
+                           consistency and employment stability (0-100).
+        employment_risk:   Employment risk category derived from
+                           employment stability: low | medium | high.
+        credit_history_summary:
+                           Human-readable summary from applicant credit score.
+        completeness_flags:
+                           Case-study aligned quality/completeness flags list.
     """
 
-    valid: bool
-    flags: list[str]
-    employment_band: str          # "stable" | "moderate" | "unstable"
-    age_eligible: bool
-    income_consistent: bool
+    income_stability_score: float
+    employment_risk: str          # "low" | "medium" | "high"
+    credit_history_summary: str
+    completeness_flags: list[str]
 
 
 class RiskResult(TypedDict, total=False):
@@ -135,6 +131,33 @@ class DecisionResult(TypedDict, total=False):
     verdict: Literal["APPROVED", "REJECTED", "REVIEW_REQUIRED"]
     confidence: float             # 0.0–1.0
     explanation: str
+
+
+class ReviewActionResult(TypedDict, total=False):
+    """
+    Output written by review_action_node into state["action_result"].
+
+    Fields:
+        action_taken:          High-level action for downstream operations.
+        notification_status:   Notification dispatch status.
+        review_queue:          Review queue assignment for manual underwriting.
+        manual_review_owner:   Current owner for the review work item.
+        reviewer_role:         Role expected to process the review.
+        review_due_timestamp:  ISO 8601 timestamp for SLA due time.
+        review_status:         Current review lifecycle status.
+        status_transition:     Latest status transition label.
+        transition_history:    Ordered transition entries with reason and time.
+    """
+
+    action_taken: str
+    notification_status: str
+    review_queue: Optional[str]
+    manual_review_owner: Optional[str]
+    reviewer_role: Optional[str]
+    review_due_timestamp: Optional[str]
+    review_status: str
+    status_transition: str
+    transition_history: list[dict[str, str]]
 
 
 class AuditRecord(TypedDict, total=False):
@@ -233,6 +256,9 @@ class AgentState(TypedDict, total=False):
     decision_result: Optional[DecisionResult]
     """Written by loan_decision_node. None until that node executes."""
 
+    action_result: Optional[ReviewActionResult]
+    """Written by review_action_node. None until that node executes."""
+
     audit_record: Optional[AuditRecord]
     """Written by compliance_node. None until that node executes."""
 
@@ -252,6 +278,33 @@ class AgentState(TypedDict, total=False):
 
     case_id: Optional[str]
     """Audit Case ID. Promoted from audit_record by compliance_node."""
+
+    action_taken: Optional[str]
+    """Top-level action signal for manual-review orchestration."""
+
+    notification_status: Optional[str]
+    """Current notification dispatch status for this case."""
+
+    review_queue: Optional[str]
+    """Assigned review queue if manual review is required."""
+
+    manual_review_owner: Optional[str]
+    """Assigned owner for manual review work item."""
+
+    reviewer_role: Optional[str]
+    """Expected reviewer role for manual review processing."""
+
+    review_due_timestamp: Optional[str]
+    """SLA due timestamp for completing manual review."""
+
+    review_status: Optional[str]
+    """Current manual-review lifecycle status."""
+
+    status_transition: Optional[str]
+    """Latest lifecycle transition label."""
+
+    transition_history: Optional[list[dict[str, str]]]
+    """Ordered lifecycle transition audit entries."""
 
     # ------------------------------------------------------------------
     # Group 4: Control flags (used by conditional edges)
@@ -295,6 +348,7 @@ def state_to_response_dict(state: AgentState) -> dict:
     """
     risk = state.get("risk_result") or {}
     audit = state.get("audit_record") or {}
+    action = state.get("action_result") or {}
 
     return {
         "applicant_id":         state.get("applicant_id", ""),
@@ -306,6 +360,15 @@ def state_to_response_dict(state: AgentState) -> dict:
         "risk_score":           risk.get("risk_score"),
         "credit_band":          risk.get("credit_band"),
         "dti":                  risk.get("dti"),
+        "action_taken":         state.get("action_taken") or action.get("action_taken", "NO_ACTION_REQUIRED"),
+        "notification_status":  state.get("notification_status") or action.get("notification_status", "NOT_SENT"),
+        "review_queue":         state.get("review_queue") or action.get("review_queue"),
+        "manual_review_owner":  state.get("manual_review_owner") or action.get("manual_review_owner"),
+        "reviewer_role":        state.get("reviewer_role") or action.get("reviewer_role"),
+        "review_due_timestamp": state.get("review_due_timestamp") or action.get("review_due_timestamp"),
+        "review_status":        state.get("review_status") or action.get("review_status", "NOT_REQUIRED"),
+        "status_transition":    state.get("status_transition") or action.get("status_transition", "NONE"),
+        "transition_history":   state.get("transition_history") or action.get("transition_history", []),
     }
 
 

@@ -20,6 +20,7 @@ langchain-community==0.2.5
 langgraph==0.1.14
 
 # --- Anthropic / AWS Bedrock ---
+# Anthropic SDK is used for agent invocation via AnthropicBedrock in agents/base_agent.py
 anthropic==0.28.0
 boto3==1.34.131
 botocore==1.34.131

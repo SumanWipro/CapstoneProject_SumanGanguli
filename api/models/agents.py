@@ -77,31 +77,41 @@ class ProfileAgentOutput(BaseModel):
     Output produced by the Applicant Profile Agent.
 
     Attributes:
-        valid:             True only if all profile checks pass. If False,
-                           the graph routes to early_rejection_node.
-        flags:             List of issue identifiers. Empty list = no issues.
-                           Examples: "AGE_INELIGIBLE", "INCOME_TOO_LOW",
-                           "EMPLOYMENT_UNSTABLE".
-        employment_band:   Stability classification derived from employment_type.
-                           stable | moderate | unstable.
-        age_eligible:      True if age is in [18, 70].
-        income_consistent: True if income is plausible for the declared
-                           employment type.
+        income_stability_score:
+                           Normalized profile stability score (0-100).
+        employment_risk:   Employment risk category derived from
+                           employment stability: low | medium | high.
+        credit_history_summary:
+                           Human-readable summary from credit score.
+        completeness_flags:
+                           Case-study aligned quality/completeness flags.
+        income_stability_score:
+                   Normalized profile stability score (0-100).
+        employment_risk:   Employment risk category derived from
+                   employment band: low | medium | high.
+        credit_history_summary:
+                   Human-readable summary from credit score.
+        completeness_flags:
+                   Case-study aligned quality/completeness flags.
     """
 
-    valid: bool = Field(..., description="True if all profile checks pass")
-    flags: list[str] = Field(
+    income_stability_score: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Normalized profile stability score (0-100)",
+    )
+    employment_risk: Literal["low", "medium", "high"] = Field(
+        ...,
+        description="Employment risk category derived from employment stability",
+    )
+    credit_history_summary: str = Field(
+        ...,
+        description="Human-readable credit history summary",
+    )
+    completeness_flags: list[str] = Field(
         default_factory=list,
-        description="List of validation issue identifiers. Empty if no issues.",
-    )
-    employment_band: Literal["stable", "moderate", "unstable"] = Field(
-        ...,
-        description="Employment stability band derived from employment_type.",
-    )
-    age_eligible: bool = Field(..., description="True if age is between 18 and 70 inclusive")
-    income_consistent: bool = Field(
-        ...,
-        description="True if income is plausible for the declared employment type",
+        description="Case-study aligned completeness and validation flags",
     )
 
     model_config = {"frozen": True}
@@ -116,7 +126,7 @@ class RiskAgentInput(BaseModel):
     Input payload for the Financial Risk Agent (calculate_risk MCP tool).
 
     Carries the financial fields needed for DTI, credit band, and composite
-    risk score calculation. employment_band is passed from ProfileAgentOutput
+    risk score calculation. employment_risk is passed from ProfileAgentOutput
     to weight the employment stability component of the risk score.
 
     Attributes:
@@ -125,7 +135,7 @@ class RiskAgentInput(BaseModel):
         credit_score:          CIBIL credit score.
         loan_amount:           Requested loan principal in INR.
         loan_tenure:           Loan repayment period in months.
-        employment_band:       From ProfileAgentOutput. Used for risk scoring.
+        employment_risk:       From ProfileAgentOutput. Used for risk scoring.
     """
 
     income: float = Field(..., gt=0, description="Annual income in INR")
@@ -133,9 +143,9 @@ class RiskAgentInput(BaseModel):
     credit_score: int = Field(..., ge=300, le=900, description="CIBIL credit score")
     loan_amount: float = Field(..., gt=0, description="Requested loan amount in INR")
     loan_tenure: int = Field(..., ge=1, description="Loan tenure in months")
-    employment_band: Literal["stable", "moderate", "unstable"] = Field(
+    employment_risk: Literal["low", "medium", "high"] = Field(
         ...,
-        description="Employment stability band from ProfileAgentOutput",
+        description="Employment risk category from ProfileAgentOutput",
     )
 
     model_config = {"frozen": True}
@@ -195,7 +205,7 @@ class PolicyAgentInput(BaseModel):
     Attributes:
         credit_band:       From RiskAgentOutput.
         dti:               From RiskAgentOutput.
-        employment_band:   From ProfileAgentOutput.
+        employment_risk:   From ProfileAgentOutput.
         loan_amount:       From the original request.
         loan_tenure:       From the original request.
         risk_flags:        From RiskAgentOutput. Used to direct policy lookup.
@@ -207,9 +217,9 @@ class PolicyAgentInput(BaseModel):
         description="Credit quality band from RiskAgentOutput",
     )
     dti: float = Field(..., ge=0.0, description="Debt-to-income ratio from RiskAgentOutput")
-    employment_band: Literal["stable", "moderate", "unstable"] = Field(
+    employment_risk: Literal["low", "medium", "high"] = Field(
         ...,
-        description="Employment band from ProfileAgentOutput",
+        description="Employment risk from ProfileAgentOutput",
     )
     loan_amount: float = Field(..., gt=0, description="Requested loan amount in INR")
     loan_tenure: int = Field(..., ge=1, description="Loan tenure in months")
@@ -326,6 +336,74 @@ class DecisionAgentOutput(BaseModel):
 
 
 # ===========================================================================
+# ACTION ORCHESTRATOR — Review Workflow
+# ===========================================================================
+
+class ActionOrchestratorInput(BaseModel):
+    """
+    Input payload for review action orchestration.
+
+    Attributes:
+        applicant_id:      Applicant identifier for audit correlation.
+        verdict:           Decision verdict used to decide if review workflow starts.
+        confidence:        Decision confidence score from DecisionAgentOutput.
+        loan_amount:       Loan amount used for queue routing rules.
+        location:          Applicant location used for optional routing rules.
+        timestamp:         Original application timestamp used for SLA anchor.
+        profile_result:    Profile output for policy/routing context.
+        risk_result:       Risk output for queue and SLA classification.
+    """
+
+    applicant_id: str = Field(..., description="Applicant identifier")
+    verdict: Literal["APPROVED", "REJECTED", "REVIEW_REQUIRED"] = Field(
+        ..., description="Decision verdict"
+    )
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Decision confidence")
+    loan_amount: float = Field(..., gt=0, description="Requested loan amount in INR")
+    location: str = Field(..., description="Applicant location")
+    timestamp: str = Field(..., description="Original application submission timestamp")
+    profile_result: dict[str, Any] = Field(..., description="ProfileAgentOutput as dict")
+    risk_result: dict[str, Any] = Field(..., description="RiskAgentOutput as dict")
+
+    model_config = {"frozen": True}
+
+
+class ActionOrchestratorOutput(BaseModel):
+    """
+    Output payload for review action orchestration.
+
+    Attributes:
+        action_taken:         High-level action selected for this case.
+        notification_status:  Current notification dispatch status.
+        review_queue:         Queue assignment for manual review.
+        manual_review_owner:  Assigned review owner.
+        reviewer_role:        Required reviewer role.
+        review_due_timestamp: SLA due timestamp in ISO 8601 format.
+        review_status:        Current lifecycle status for the case.
+        status_transition:    Latest transition label.
+        transition_history:   Ordered transition history entries.
+    """
+
+    action_taken: str = Field(..., description="Selected action for this case")
+    notification_status: str = Field(..., description="Notification dispatch status")
+    review_queue: Optional[str] = Field(default=None, description="Assigned review queue")
+    manual_review_owner: Optional[str] = Field(default=None, description="Assigned review owner")
+    reviewer_role: Optional[str] = Field(default=None, description="Required reviewer role")
+    review_due_timestamp: Optional[str] = Field(
+        default=None,
+        description="Manual review due timestamp in ISO 8601 format",
+    )
+    review_status: str = Field(..., description="Current review lifecycle status")
+    status_transition: str = Field(..., description="Latest lifecycle transition")
+    transition_history: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="Ordered lifecycle transition records",
+    )
+
+    model_config = {"frozen": True}
+
+
+# ===========================================================================
 # AGENT 5 — Compliance Agent
 # ===========================================================================
 
@@ -357,6 +435,21 @@ class ComplianceAgentInput(BaseModel):
     risk_result: dict[str, Any] = Field(..., description="RiskAgentOutput as dict")
     timestamp: str = Field(..., description="Original application submission timestamp")
     decision_date: str = Field(..., description="Decision date in YYYY-MM-DD format (UTC)")
+    action_taken: str = Field(default="NO_ACTION_REQUIRED", description="Selected action")
+    notification_status: str = Field(default="NOT_SENT", description="Notification status")
+    review_queue: Optional[str] = Field(default=None, description="Assigned review queue")
+    manual_review_owner: Optional[str] = Field(default=None, description="Current review owner")
+    reviewer_role: Optional[str] = Field(default=None, description="Assigned reviewer role")
+    review_due_timestamp: Optional[str] = Field(
+        default=None,
+        description="Manual review due timestamp in ISO 8601",
+    )
+    review_status: str = Field(default="NOT_REQUIRED", description="Review lifecycle status")
+    status_transition: str = Field(default="NONE", description="Latest lifecycle transition")
+    transition_history: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="Lifecycle transition history entries",
+    )
 
     model_config = {"frozen": True}
 

@@ -44,7 +44,7 @@ class FinancialRiskAgent(BaseAgent):
         Calculate financial risk and return a RiskResult.
 
         Execution steps:
-            1. Extract financial fields and employment_band from payload
+            1. Extract financial fields and employment_risk from payload
             2. Render the financial_risk.txt prompt template
             3. Call Claude Sonnet via Bedrock with retry
             4. Parse the JSON response into a RiskResult dict
@@ -56,7 +56,7 @@ class FinancialRiskAgent(BaseAgent):
                 credit_score (int)            — CIBIL score 300–900
                 loan_amount (float)           — requested loan principal in INR
                 loan_tenure (int)             — repayment period in months
-                employment_band (str)         — from ProfileResult
+                employment_risk (str)         — from ProfileResult
 
         Returns:
             RiskResult TypedDict:
@@ -82,7 +82,7 @@ class FinancialRiskAgent(BaseAgent):
             credit_score         = str(payload.get("credit_score", 300)),
             loan_amount          = str(payload.get("loan_amount", 0)),
             loan_tenure          = str(payload.get("loan_tenure", 12)),
-            employment_band      = str(payload.get("employment_band", "stable")),
+            employment_risk      = str(payload.get("employment_risk", "medium")),
         )
 
         # Step 2: Call Claude Sonnet

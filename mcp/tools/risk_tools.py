@@ -12,7 +12,7 @@ Responsibility:
 Tool contract:
     Name:   calculate_risk
     Input:  RiskInput  — income, liabilities, credit_score, loan_amount,
-                         loan_tenure, employment_band
+                         loan_tenure, employment_risk
     Output: RiskOutput — dti, credit_band, risk_score, risk_flags
 """
 
@@ -36,9 +36,7 @@ class RiskInput(BaseModel):
     """
     Input schema for the calculate_risk MCP tool.
 
-    employment_band is passed from the ProfileOutput of validate_profile —
-    the risk score formula requires the stability band, not the raw
-    employment_type string.
+    employment_risk is passed from the ProfileOutput of validate_profile.
     """
 
     income: float = Field(
@@ -61,9 +59,9 @@ class RiskInput(BaseModel):
         ..., ge=1, le=360,
         description="Loan repayment period in months",
     )
-    employment_band: str = Field(
+    employment_risk: str = Field(
         ...,
-        description="Employment stability band from ProfileOutput: stable | moderate | unstable",
+        description="Employment risk from ProfileOutput: low | medium | high",
     )
 
 

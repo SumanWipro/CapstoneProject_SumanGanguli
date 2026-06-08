@@ -9,7 +9,7 @@ Given the following financial data:
 - Credit Score (CIBIL):              {credit_score}
 - Loan Amount (INR):                 {loan_amount}
 - Loan Tenure (months):              {loan_tenure}
-- Employment Band:                   {employment_band}
+- Employment Risk:                   {employment_risk}
 
 Perform the following calculations:
 1. DTI (Debt-to-Income Ratio) = existing_liabilities / (income / 12)
@@ -21,10 +21,10 @@ Perform the following calculations:
 3. Compute a composite risk score (0-100) where higher = more risk:
    - Base from DTI: DTI <= 0.30 -> 10 pts, DTI <= 0.45 -> 30 pts, DTI <= 0.60 -> 60 pts, DTI > 0.60 -> 90 pts
    - Adjust for credit band: excellent -15, good -5, fair +10, poor +25
-   - Adjust for employment band: stable -5, moderate +5, unstable +20
+   - Adjust for employment risk: low -5, medium +5, high +20
    - Clamp result to range 0-100
 4. Identify applicable risk flags from this list:
-   high_dti (DTI > 0.45), poor_credit (score < 550), unstable_employment (band = unstable),
+   high_dti (DTI > 0.45), poor_credit (score < 550), unstable_employment (employment risk = high),
    high_loan_to_income (loan > 3x annual income), thin_credit_file (score < 400)
 
 Return your response as a single JSON object with exactly these fields.

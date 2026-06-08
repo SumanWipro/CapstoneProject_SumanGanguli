@@ -27,11 +27,10 @@ Perform the following checks:
 
 Return your response as a single JSON object with exactly these fields:
 {{
-  "valid": true | false,
-  "flags": ["list of issue descriptions, empty if none"],
-  "employment_band": "stable" | "moderate" | "unstable",
-  "age_eligible": true | false,
-  "income_consistent": true | false
+   "income_stability_score": number between 0 and 100,
+   "employment_risk": "low" | "medium" | "high",
+   "credit_history_summary": "short credit summary string",
+   "completeness_flags": ["list of completeness/validation flags"]
 }}
 
 Do not include any text outside the JSON object.
