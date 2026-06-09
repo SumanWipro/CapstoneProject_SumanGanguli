@@ -88,40 +88,67 @@ class ApplicantProfileAgent(BaseAgent):
         # Step 3: Parse structured JSON response
         parsed = self.parse_json_response(raw)
 
-        employment_band = str(parsed.get("employment_band", "unstable"))
-        income_consistent = bool(parsed.get("income_consistent", False))
-        flags = list(parsed.get("flags", []))
+        # Prefer modern prompt schema first.
+        employment_risk = str(parsed.get("employment_risk", "")).strip().lower()
+        income_stability_score_raw = parsed.get("income_stability_score", None)
+        credit_history_summary = str(parsed.get("credit_history_summary", "")).strip()
+        completeness_flags = list(parsed.get("completeness_flags", []))
 
-        # Case-study alignment fields
-        employment_risk_map = {
-            "stable": "low",
-            "moderate": "medium",
-            "unstable": "high",
-        }
-        employment_risk = employment_risk_map.get(employment_band, "high")
+        # Legacy compatibility fallback (older prompt outputs).
+        employment_band = str(parsed.get("employment_band", "")).strip().lower()
+        income_consistent = parsed.get("income_consistent", None)
+        age_eligible = parsed.get("age_eligible", None)
+        legacy_flags = list(parsed.get("flags", []))
 
-        base_stability_score = {
-            "stable": 85,
-            "moderate": 65,
-            "unstable": 40,
-        }.get(employment_band, 40)
-        income_stability_score = max(0, min(100, base_stability_score if income_consistent else base_stability_score - 25))
+        if not completeness_flags:
+            completeness_flags = legacy_flags
 
-        credit_score = int(payload.get("credit_score", 0) or 0)
-        if credit_score >= 750:
-            credit_history_summary = f"Excellent credit history ({credit_score})"
-        elif credit_score >= 650:
-            credit_history_summary = f"Good credit history ({credit_score})"
-        elif credit_score >= 550:
-            credit_history_summary = f"Fair credit history ({credit_score})"
-        else:
-            credit_history_summary = f"Poor credit history ({credit_score})"
-
-        completeness_flags = list(flags)
-        if not bool(parsed.get("age_eligible", False)) and "AGE_INELIGIBLE" not in completeness_flags:
+        # Add flags only when explicitly False (not when key is missing).
+        if age_eligible is False and "AGE_INELIGIBLE" not in completeness_flags:
             completeness_flags.append("AGE_INELIGIBLE")
-        if not income_consistent and "INCOME_INCONSISTENT" not in completeness_flags:
+        if income_consistent is False and "INCOME_INCONSISTENT" not in completeness_flags:
             completeness_flags.append("INCOME_INCONSISTENT")
+
+        # Determine employment_risk if modern field is missing/invalid.
+        if employment_risk not in {"low", "medium", "high"}:
+            employment_risk_map = {
+                "stable": "low",
+                "moderate": "medium",
+                "unstable": "high",
+            }
+            if employment_band in employment_risk_map:
+                employment_risk = employment_risk_map[employment_band]
+            else:
+                employment_type = str(payload.get("employment_type", "")).strip().lower()
+                if employment_type in {"salaried", "government"}:
+                    employment_risk = "low"
+                elif employment_type in {"self_employed", "contract"}:
+                    employment_risk = "medium"
+                else:
+                    employment_risk = "high"
+
+        # Determine income_stability_score if modern field is missing/invalid.
+        if isinstance(income_stability_score_raw, (int, float)):
+            income_stability_score = max(0.0, min(100.0, float(income_stability_score_raw)))
+        else:
+            if employment_risk == "low":
+                income_stability_score = 85.0
+            elif employment_risk == "medium":
+                income_stability_score = 65.0
+            else:
+                income_stability_score = 40.0
+
+        # Fallback credit summary only if not provided by model.
+        if not credit_history_summary:
+            credit_score = int(payload.get("credit_score", 0) or 0)
+            if credit_score >= 750:
+                credit_history_summary = f"Excellent credit history ({credit_score})"
+            elif credit_score >= 650:
+                credit_history_summary = f"Good credit history ({credit_score})"
+            elif credit_score >= 550:
+                credit_history_summary = f"Fair credit history ({credit_score})"
+            else:
+                credit_history_summary = f"Poor credit history ({credit_score})"
 
         result: ProfileResult = {
             "income_stability_score": float(income_stability_score),
