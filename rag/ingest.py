@@ -205,7 +205,9 @@ def ingest_documents() -> int:
         count = ingest_documents()
         print(f"Stored {count} chunks")
     """
+    global _CHUNK_SIZE, _CHUNK_OVERLAP
     settings = get_settings()
+    
 
     # Read chunk config from loan_rules.yaml if available
     rag_cfg    = settings.loan_rules.get("agents", {}).get("rag", {})
@@ -213,7 +215,6 @@ def ingest_documents() -> int:
     overlap    = int(rag_cfg.get("chunk_overlap", _CHUNK_OVERLAP))
 
     # Override module-level defaults if config differs
-    global _CHUNK_SIZE, _CHUNK_OVERLAP
     _CHUNK_SIZE, _CHUNK_OVERLAP = chunk_size, overlap
 
     log.info(

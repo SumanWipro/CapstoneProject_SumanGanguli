@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+venv_app/
+.venv/
+env/
+ENV/
+
+# Environment / secrets
+.env
+*.env.local
+
+# ChromaDB vector store
+chroma_db/
+
+# Audit logs (runtime-generated)
+audit/logs/*.jsonl
+
+# Pytest cache
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/

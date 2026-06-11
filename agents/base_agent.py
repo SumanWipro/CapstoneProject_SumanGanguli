@@ -35,9 +35,10 @@ from typing import Any
 import boto3
 from botocore.exceptions import ClientError
 try:
-    from anthropic import AnthropicBedrock, APIError
+    from anthropic import Anthropic, AnthropicBedrock, APIError
     _ANTHROPIC_SDK_AVAILABLE = True
 except Exception:
+    Anthropic = None  # type: ignore[assignment]
     AnthropicBedrock = None  # type: ignore[assignment]
     APIError = None  # type: ignore[assignment]
     _ANTHROPIC_SDK_AVAILABLE = False
@@ -340,22 +341,34 @@ class BaseAgent(ABC):
 
     def _build_anthropic_sdk_client(self):
         """
-        Build Anthropic Bedrock client when SDK is available.
+        Build Anthropic client when SDK is available.
+
+        Uses the standard Anthropic client when ANTHROPIC_BASE_URL is set
+        (gateway/proxy mode), otherwise falls back to AnthropicBedrock with
+        AWS SigV4 signing.
 
         Returns:
-            AnthropicBedrock client instance when available, otherwise None.
+            Anthropic or AnthropicBedrock client instance when available, otherwise None.
         """
-        if not _ANTHROPIC_SDK_AVAILABLE or AnthropicBedrock is None:
+        import os
+        if not _ANTHROPIC_SDK_AVAILABLE:
             log.warning("anthropic_sdk_unavailable_fallback_to_boto3")
             return None
 
         try:
-            client = AnthropicBedrock(
-                aws_region=self.settings.aws_region,
-                aws_access_key=self.settings.aws_access_key_id or None,
-                aws_secret_key=self.settings.aws_secret_access_key or None,
-            )
-            log.info("anthropic_sdk_enabled_for_agent_calls", model=self.settings.bedrock_model_id)
+            if os.environ.get("ANTHROPIC_BASE_URL"):
+                # Gateway/proxy mode: use the standard client with bearer token auth
+                client = Anthropic()
+                log.info("anthropic_sdk_enabled_for_agent_calls",
+                         model=self.settings.bedrock_model_id, mode="gateway")
+            else:
+                client = AnthropicBedrock(
+                    aws_region=self.settings.aws_region,
+                    aws_access_key=self.settings.aws_access_key_id or None,
+                    aws_secret_key=self.settings.aws_secret_access_key or None,
+                )
+                log.info("anthropic_sdk_enabled_for_agent_calls",
+                         model=self.settings.bedrock_model_id, mode="bedrock")
             return client
         except Exception as exc:
             log.warning(

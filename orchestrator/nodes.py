@@ -203,6 +203,7 @@ def financial_risk_node(state: AgentState) -> dict:
         employment_risk = profile_result.get("employment_risk", "medium")
 
         risk_data = {
+            "applicant_id":         applicant_id,
             "income":               state["income"],
             "existing_liabilities": state["existing_liabilities"],
             "credit_score":         state["credit_score"],

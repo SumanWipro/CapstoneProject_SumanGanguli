@@ -20,6 +20,10 @@ Design decision — form over pure chat:
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 import uuid
 from datetime import datetime, timezone
 
@@ -360,20 +364,20 @@ if st.session_state.chat_mode == "chat" and st.session_state.chat_stage not in [
                     
                     if st.session_state.chat_field_index < len(CHAT_FIELDS):
                         # Add assistant question for next field
-                    next_field = CHAT_FIELDS[st.session_state.chat_field_index]
-                    next_prompt = CHAT_PROMPTS.get(next_field, f"Please provide {next_field}:")
-                    _chat_add_assistant_message(next_prompt)
+                        next_field = CHAT_FIELDS[st.session_state.chat_field_index]
+                        next_prompt = CHAT_PROMPTS.get(next_field, f"Please provide {next_field}:")
+                        _chat_add_assistant_message(next_prompt)
+                    else:
+                        # All fields collected, show confirmation
+                        _chat_add_assistant_message(
+                            "All information collected! Please review and confirm your details below before submitting."
+                        )
+                        st.session_state.chat_stage = "confirm"
+
+                    st.rerun()
                 else:
-                    # All fields collected, show confirmation
-                    _chat_add_assistant_message(
-                        "All information collected! Please review and confirm your details below before submitting."
-                    )
-                    st.session_state.chat_stage = "confirm"
-                
-                st.rerun()
-            else:
-                # Validation failed
-                st.error(f"Error: {error_msg}", icon="")
+                    # Validation failed
+                    st.error(f"Error: {error_msg}", icon="")
     
     st.divider()
 
@@ -619,128 +623,128 @@ if st.session_state.chat_mode == "form" or st.session_state.chat_stage in ["resu
                     min_value=18, max_value=70, value=int(default_age), step=1,
                     help="Must be between 18 and 70 inclusive.",
                 )
-        income = st.number_input(
-            "Annual Income (INR)",
-            min_value=150_000.0, max_value=50_000_000.0,
-            value=float(default_income), step=10_000.0, format="%.0f",
-            help="Annual gross income in Indian Rupees.",
-        )
-        employment_type = st.selectbox(
-            "Employment Type",
-            options=["salaried", "government", "self_employed", "contract",
-                     "unemployed", "student"],
-            index=["salaried", "government", "self_employed", "contract", "unemployed", "student"].index(str(default_employment)),
-            help="salaried/government = stable; self_employed/contract = moderate; "
-                 "unemployed/student = unstable.",
-        )
-        credit_score = st.slider(
-            "CIBIL Credit Score",
-            min_value=300, max_value=900, value=int(default_credit), step=1,
-            help="300–549: Poor | 550–649: Fair | 650–749: Good | 750–900: Excellent",
-        )
+                income = st.number_input(
+                    "Annual Income (INR)",
+                    min_value=150_000.0, max_value=50_000_000.0,
+                    value=float(default_income), step=10_000.0, format="%.0f",
+                    help="Annual gross income in Indian Rupees.",
+                )
+                employment_type = st.selectbox(
+                    "Employment Type",
+                    options=["salaried", "government", "self_employed", "contract",
+                             "unemployed", "student"],
+                    index=["salaried", "government", "self_employed", "contract", "unemployed", "student"].index(str(default_employment)),
+                    help="salaried/government = stable; self_employed/contract = moderate; "
+                         "unemployed/student = unstable.",
+                )
+                credit_score = st.slider(
+                    "CIBIL Credit Score",
+                    min_value=300, max_value=900, value=int(default_credit), step=1,
+                    help="300–549: Poor | 550–649: Fair | 650–749: Good | 750–900: Excellent",
+                )
 
-    with col_right:
-        loan_amount = st.number_input(
-            "Loan Amount (INR)",
-            min_value=10_000.0, max_value=10_000_000.0,
-            value=float(default_loan_amount), step=10_000.0, format="%.0f",
-            help="Requested loan principal. Maximum 3× annual income for unsecured loans.",
-        )
-        loan_tenure = st.number_input(
-            "Loan Tenure (months)",
-            min_value=6, max_value=360, value=int(default_tenure), step=6,
-            help="Repayment period. 6–360 months.",
-        )
-        existing_liabilities = st.number_input(
-            "Existing Monthly Liabilities (INR)",
-            min_value=0.0, max_value=5_000_000.0,
-            value=float(default_liabilities), step=1_000.0, format="%.0f",
-            help="Total existing EMIs, credit card minimums, and other monthly obligations.",
-        )
-        location = st.text_input(
-            "Location (City / Region)",
-            value=str(default_location),
-            help="Applicant's city or region.",
-            max_chars=100,
-        )
+            with col_right:
+                loan_amount = st.number_input(
+                    "Loan Amount (INR)",
+                    min_value=10_000.0, max_value=10_000_000.0,
+                    value=float(default_loan_amount), step=10_000.0, format="%.0f",
+                    help="Requested loan principal. Maximum 3× annual income for unsecured loans.",
+                )
+                loan_tenure = st.number_input(
+                    "Loan Tenure (months)",
+                    min_value=6, max_value=360, value=int(default_tenure), step=6,
+                    help="Repayment period. 6–360 months.",
+                )
+                existing_liabilities = st.number_input(
+                    "Existing Monthly Liabilities (INR)",
+                    min_value=0.0, max_value=5_000_000.0,
+                    value=float(default_liabilities), step=1_000.0, format="%.0f",
+                    help="Total existing EMIs, credit card minimums, and other monthly obligations.",
+                )
+                location = st.text_input(
+                    "Location (City / Region)",
+                    value=str(default_location),
+                    help="Applicant's city or region.",
+                    max_chars=100,
+                )
 
-    st.divider()
+            st.divider()
 
-    # Credit score indicator
-    cs_band = (
-        "Excellent (750–900)" if credit_score >= 750 else
-        "Good (650–749)"      if credit_score >= 650 else
-        "Fair (550–649)"      if credit_score >= 550 else
-        "Poor (300–549)"
-    )
-    dti_preview = existing_liabilities / (income / 12) if income > 0 else 0
-    col_i1, col_i2, col_i3 = st.columns(3)
-    col_i1.metric("Credit Band Preview", cs_band)
-    col_i2.metric("DTI Preview", f"{dti_preview:.2%}",
-                  help="Debt-to-Income = monthly liabilities / (income/12)")
-    col_i3.metric("Loan-to-Income Ratio", f"{loan_amount/income:.1f}×",
-                  help="Maximum 3× annual income for unsecured personal loans")
+            # Credit score indicator
+            cs_band = (
+                "Excellent (750–900)" if credit_score >= 750 else
+                "Good (650–749)"      if credit_score >= 650 else
+                "Fair (550–649)"      if credit_score >= 550 else
+                "Poor (300–549)"
+            )
+            dti_preview = existing_liabilities / (income / 12) if income > 0 else 0
+            col_i1, col_i2, col_i3 = st.columns(3)
+            col_i1.metric("Credit Band Preview", cs_band)
+            col_i2.metric("DTI Preview", f"{dti_preview:.2%}",
+                          help="Debt-to-Income = monthly liabilities / (income/12)")
+            col_i3.metric("Loan-to-Income Ratio", f"{loan_amount/income:.1f}×",
+                          help="Maximum 3× annual income for unsecured personal loans")
 
-    st.divider()
-    submitted = st.form_submit_button(
-        "🚀 Submit Application",
-        use_container_width=True,
-        type="primary",
-    )
+            st.divider()
+            submitted = st.form_submit_button(
+                "🚀 Submit Application",
+                use_container_width=True,
+                type="primary",
+            )
 
-        # ---------------------------------------------------------------------------
-        # Handle form submission
-        # ---------------------------------------------------------------------------
-        if submitted:
-            # Client-side validation
-            errors = []
-            if loan_amount > income * 3:
-                errors.append(f"Loan amount ({loan_amount:,.0f}) exceeds 3× annual income ({income*3:,.0f}).")
-            if dti_preview > 0.80:
-                errors.append(f"DTI of {dti_preview:.2%} is very high. The application will likely be rejected.")
+            # ---------------------------------------------------------------------------
+            # Handle form submission
+            # ---------------------------------------------------------------------------
+            if submitted:
+                # Client-side validation
+                errors = []
+                if loan_amount > income * 3:
+                    errors.append(f"Loan amount ({loan_amount:,.0f}) exceeds 3× annual income ({income*3:,.0f}).")
+                if dti_preview > 0.80:
+                    errors.append(f"DTI of {dti_preview:.2%} is very high. The application will likely be rejected.")
 
-            if errors:
-                for e in errors:
-                    st.warning(e, icon="⚠️")
+                if errors:
+                    for e in errors:
+                        st.warning(e, icon="⚠️")
 
-            # Build request payload
-            payload = {
-                "applicant_id":         applicant_id,
-                "age":                  int(age),
-                "income":               float(income),
-                "employment_type":      employment_type,
-                "credit_score":         int(credit_score),
-                "loan_amount":          float(loan_amount),
-                "loan_tenure":          int(loan_tenure),
-                "existing_liabilities": float(existing_liabilities),
-                "location":             location,
-                "timestamp":            datetime.now(timezone.utc).isoformat(),
-            }
+                # Build request payload
+                payload = {
+                    "applicant_id":         applicant_id,
+                    "age":                  int(age),
+                    "income":               float(income),
+                    "employment_type":      employment_type,
+                    "credit_score":         int(credit_score),
+                    "loan_amount":          float(loan_amount),
+                    "loan_tenure":          int(loan_tenure),
+                    "existing_liabilities": float(existing_liabilities),
+                    "location":             location,
+                    "timestamp":            datetime.now(timezone.utc).isoformat(),
+                }
 
-            with st.spinner("Analysing application through the AI pipeline..."):
-                try:
-                    result = _call_api(payload)
+                with st.spinner("Analysing application through the AI pipeline..."):
+                    try:
+                        result = _call_api(payload)
 
-                    # Persist to session state
-                    st.session_state.last_decision = result
-                    st.session_state.last_request  = payload
-                    st.session_state.pipeline_trace = result.get("traces", [])
-                    st.session_state.application_history.append(result)
+                        # Persist to session state
+                        st.session_state.last_decision = result
+                        st.session_state.last_request  = payload
+                        st.session_state.pipeline_trace = result.get("traces", [])
+                        st.session_state.application_history.append(result)
 
-                except httpx.HTTPStatusError as exc:
-                    st.error(
-                        f"API returned {exc.response.status_code}: "
-                        f"{exc.response.json().get('message', exc.response.text)}",
-                        icon="🔴",
-                    )
-                    result = None
-                except httpx.RequestError:
-                    st.error(
-                        f"Could not reach the FastAPI gateway at {API_URL}. "
-                        f"Start it with: `uvicorn api.main:app --port {settings.api_port} --reload`",
-                        icon="🔴",
-                    )
-                    result = None
+                    except httpx.HTTPStatusError as exc:
+                        st.error(
+                            f"API returned {exc.response.status_code}: "
+                            f"{exc.response.json().get('message', exc.response.text)}",
+                            icon="🔴",
+                        )
+                        result = None
+                    except httpx.RequestError:
+                        st.error(
+                            f"Could not reach the FastAPI gateway at {API_URL}. "
+                            f"Start it with: `uvicorn api.main:app --port {settings.api_port} --reload`",
+                            icon="🔴",
+                        )
+                        result = None
 
 
 # ---------------------------------------------------------------------------

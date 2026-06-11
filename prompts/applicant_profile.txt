@@ -30,7 +30,12 @@ Return your response as a single JSON object with exactly these fields:
    "income_stability_score": number between 0 and 100,
    "employment_risk": "low" | "medium" | "high",
    "credit_history_summary": "short credit summary string",
-   "completeness_flags": ["list of completeness/validation flags"]
+   "completeness_flags": ["list of FAILED or WARNING flags only — omit passing checks entirely"]
 }}
+
+CRITICAL: completeness_flags must contain ONLY entries for checks that FAILED or require a WARNING.
+Do NOT add entries for checks that passed. An applicant who passes all checks must have an empty list: [].
+Examples of correct flags: ["AGE_INELIGIBLE", "INCOME_INCONSISTENT", "MISSING_FIELD:credit_score"]
+Examples of INCORRECT flags (never include these): ["PASS: Age is valid", "INFO: liabilities noted"]
 
 Do not include any text outside the JSON object.
